@@ -64,3 +64,4 @@ best_model.export('onnx') # export best model to onnx runtime file format
 - Look into configuration files
 - Ask about GPU access and budget
 - Ask about final platform for usecase
+- Consult LLMs
