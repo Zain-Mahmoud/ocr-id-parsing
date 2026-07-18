@@ -65,3 +65,15 @@ best_model.export('onnx') # export best model to onnx runtime file format
 - Ask about GPU access and budget
 - Ask about final platform for usecase
 - Consult LLMs
+
+
+### VLM training
+- Use `PaddleOCR-VL-1.6` (latest VLM from paddleOCR)
+- Perform fine tuning using our labelled data.
+
+### OCR & fixed-rule extraction
+- Use standard OCR to extract fields and positions. `PaddleOCRv6`, `EasyOCR`, `RapidOCR` etc
+- Analyse extracted fields using fixed rules (coordinates, regular expressions, etc.)
+
+
+![alt text](image.png)
