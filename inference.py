@@ -1,4 +1,5 @@
 from unsloth import FastVisionModel
+import json 
 
 field_structure = {
     "full_name": "string (arabic)",
@@ -8,15 +9,18 @@ field_structure = {
 
 USER_PROMPT = f'''
     Extract all the fields out of this Egyptian national ID following this format: {field_structure}.
-    Return all fields as they appear and do not make any changes or updates to any of the fields.
+    Return all fields as they appear and do not make any changes or updates to any of the fields. Return in
+    in json format
 '''
 
 
 model, tokenzier = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=False)
-FastVisionModel.for_inference(model)
 
 
 def infer(model, tokenizer, sample):
+    
+    FastVisionModel.for_infer(model)
+
     messages = [
         {
             'role': 'user',
@@ -40,3 +44,13 @@ def infer(model, tokenizer, sample):
     return inference
 
 
+def batch_infer(model, tokenizer, samples):
+    FastVisionModel.for_infer(model)
+    predictions = []
+    for sample in samples:
+        try:
+            prediction = json.loads(infer(model, tokenizer, sample['image']))
+        except json.JSONDecodeError:
+            prediction = None
+        predictions.append(prediction)
+    return predictions

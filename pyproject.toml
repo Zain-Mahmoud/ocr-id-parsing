@@ -7,8 +7,10 @@ requires-python = ">=3.14"
 dependencies = [
     "dotenv>=0.9.9",
     "ipykernel>=7.3.0",
+    "jiwer>=4.0.0",
     "jupyter>=1.1.1",
     "notebook>=7.6.0",
+    "scikit-learn>=1.9.0",
     "torch>=2.10.0",
     "transformers>=5.5.0",
     "unsloth>=2026.7.3",
