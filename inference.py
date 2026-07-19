@@ -37,7 +37,7 @@ def infer(model, tokenizer, sample):
     ]
 
     input_text = tokenizer.apply_chat_templates(messages, add_generation_prompt=True)
-    inputs = tokenizer(sample, input_text, add_special_tokens=False, return_tensors='pt').to('cuda')
+    inputs = tokenizer(sample, input_text, add_special_tokens=False, return_tensors='pt').to(model.device)
 
     inference = model.generate(**inputs, max_new_tokens=128, use_cache=True, temperature=1.5, min_p=0.1)
 
