@@ -1,6 +1,7 @@
 from unsloth import FastVisionModel
 import json 
 from PIL import Image, ImageEnhance
+from tqdm.auto import tqdm
 
 field_structure = {
     "full_name": "string (arabic)",
@@ -53,7 +54,7 @@ def batch_infer(model, tokenizer, samples):
     FastVisionModel.for_infer(model)
     predictions = []
 
-    for sample in samples:
+    for sample in tqdm(samples):
         prediction = infer(model, tokenizer, sample)
         predictions.append(prediction)
 
