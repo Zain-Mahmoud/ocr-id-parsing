@@ -75,5 +75,3 @@ best_model.export('onnx') # export best model to onnx runtime file format
 - Use standard OCR to extract fields and positions. `PaddleOCRv6`, `EasyOCR`, `RapidOCR` etc
 - Analyse extracted fields using fixed rules (coordinates, regular expressions, etc.)
 
-
-![alt text](image.png)
