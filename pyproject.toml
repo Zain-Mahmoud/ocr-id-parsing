@@ -16,6 +16,7 @@ dependencies = [
     "torch>=2.10.0",
     "tqdm>=4.68.4",
     "transformers>=5.5.0",
+    "ultralytics>=8.4.102",
     "unsloth>=2026.7.3",
     "wandb>=0.28.1",
     "weave>=0.53.2",
