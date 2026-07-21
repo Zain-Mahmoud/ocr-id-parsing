@@ -25,7 +25,7 @@ def preprocess_image(image: Image):
 
 
 def infer(model, tokenizer, sample: Image):
-    FastVisionModel.for_infer(model)
+    FastVisionModel.for_inference(model)
 
     messages = [
         {
@@ -51,7 +51,7 @@ def infer(model, tokenizer, sample: Image):
 
 
 def batch_infer(model, tokenizer, samples):
-    FastVisionModel.for_infer(model)
+    FastVisionModel.for_inference(model)
     predictions = []
 
     for sample in tqdm(samples):
