@@ -61,4 +61,4 @@ def batch_infer(model, tokenizer, samples):
     return predictions
 
 
-model, tokenzier = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=False)
+model, tokenzier = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
