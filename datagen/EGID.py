@@ -376,7 +376,6 @@ class GenerateID():
                 contrast_limit=0.0,
                 p=1.0,
             ),
-            A.ToGray(p=0.5),
         ])
 
         ids_dir = Path("../data/synthetic-ids/images/augment")
@@ -412,11 +411,7 @@ class GenerateID():
 
         print(f"Generated {self.augment_batches} augmentations per image.")
 
-    def random_grayscale(self,img):
-            if np.random.rand() < 0.5:  # 50% chance of applying grayscale
-                img = np.dot(img[..., :3], [0.2989, 0.5870, 0.1140])
-                img = np.stack((img,)*3, axis=-1)  # Convert grayscale image to 3 channels
-            return img
+
 
 
 if __name__ == '__main__':
