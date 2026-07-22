@@ -1,3 +1,4 @@
 .venv
 .env
-data/
+data/synthetic-ids/images/*
+data/synthetic-ids/IDLabels.csv
