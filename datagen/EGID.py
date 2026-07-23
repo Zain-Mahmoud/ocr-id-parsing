@@ -1,4 +1,3 @@
-
 #dependencies you might not have:
 # install: pip install --upgrade arabic-reshaper
 # install: pip install python-bidi
@@ -61,13 +60,13 @@ class GenerateID():
         birthdate=self.generateBirthdate()
         birthdate_formatted="{YY}/{MM}/{DD}".format(YY=birthdate[-4:],MM=birthdate[2:4],DD=birthdate[:2])
         id_number=self.generateIDNumber(birthdate)
-        governorate = self.generateGov()
+        governorate, station_line = self.generateGovStation()
         address = self.generateAddress()
 
         first_name_image =self.putArText('./IDBLANK.jpg',25,first_name,(850,420))
         self.putArText(first_name_image,25,paternal_names,(850,460))
-        self.putArText(first_name_image,25,address,(850,500))
-        self.putArText(first_name_image,25,governorate,(850,550))
+        self.putArText(first_name_image,25,address,(850,520))
+        self.putArText(first_name_image,25,station_line,(850,560))
         self.putArNumText(first_name_image,25,birthdate_formatted,(400,630))
         self.putArNumText(first_name_image,25,id_number,(850,650))
 
@@ -107,7 +106,7 @@ class GenerateID():
             "issue_date": convert_digits(issue_date),
             "expiration_date": convert_digits(expiration_date),
             "address": address,
-            "governorate": governorate,
+            "address2": station_line,
             "job_title": job_text,
             "religion": religion,
             "marital_status": marital_status
@@ -124,7 +123,7 @@ class GenerateID():
                 "issue_date": convert_digits(issue_date),
                 "expiration_date": convert_digits(expiration_date),
                 "address": address,
-                "governorate": governorate,
+                "address2": station_line,
                 "job_title": job_text,
                 "religion": religion,
                 "marital_status": marital_status
@@ -145,7 +144,7 @@ class GenerateID():
         return choice(self.female_jobs)
 
     def loadFiles(self):
-        #loadibg files :names, governorates, and images paths
+        #loading files: names, governorates, police stations, addresses, and image paths
         with open('names.yaml', 'r', encoding='utf-8') as file:
             names_dict = yaml.safe_load(file)
 
@@ -161,6 +160,18 @@ class GenerateID():
         with open('egy_gov.yaml', 'r', encoding='utf-8') as file:
             gov_dict = yaml.safe_load(file)
         self.gov_names = gov_dict['egyptian_governorates']
+
+        # NEW: police stations per governorate
+        with open('police_stations.yaml', 'r', encoding='utf-8') as file:
+            station_dict = yaml.safe_load(file)
+        self.police_stations = station_dict.get('police_stations', {})
+
+        # NEW: address components
+        with open('addresses.yaml', 'r', encoding='utf-8') as file:
+            address_dict = yaml.safe_load(file)
+        self.street_names = address_dict['street_names']
+        self.street_prefixes = address_dict['street_prefixes']
+        self.area_descriptors = address_dict['area_descriptors']
 
         self.female_images=glob.glob("./images/female/**")
         self.male_images=glob.glob("./images/male/**")
@@ -206,13 +217,42 @@ class GenerateID():
 
     def generateGov(self):
         '''
-        chooses a random governorate from  gov_names list
+        chooses a random governorate from gov_names list
         Args:
             None
         Returns:
             governorate name(str)
         '''
         return choice(self.gov_names)
+
+    def generateGovStation(self):
+        '''
+        Chooses a random governorate and a plausible police station within it,
+        formatted the way Egyptian national IDs display it:
+        "{station} - {governorate}"
+
+        Falls back to a generic ordinal station name ("قسم أول {governorate}")
+        if the governorate has no explicit station list in police_stations.yaml.
+
+        Args:
+            None
+        Returns:
+            tuple: (governorate(str), station_line(str))
+        '''
+        governorate = choice(self.gov_names)
+        stations = self.police_stations.get(governorate)
+
+        if not stations:
+            # Fallback for governorates not yet populated in police_stations.yaml
+            stations = [
+                f"قسم أول {governorate}",
+                f"قسم ثاني {governorate}",
+                f"مركز {governorate}",
+            ]
+
+        station = choice(stations)
+        station_line = f"{station} - {governorate}"
+        return governorate, station_line
 
     def generateName(self):
         '''
@@ -245,7 +285,7 @@ class GenerateID():
         if married == 0:
             marital_status = 'متزوج' if gender == 1 else 'متزوجة'
         if married == 1:
-            marital_status = 'اعزب' if gender == 1 else 'عزباء'
+            marital_status = 'اعزب' if gender == 1 else 'أنسة'
         if married == 2:
             marital_status = 'أرمل' if gender == 1 else 'أرملة'
 
@@ -272,14 +312,26 @@ class GenerateID():
 
     def generateAddress(self):
         '''
-        Generates not so random addresses
+        Generates a randomized Egyptian-style street address, e.g.:
+        "12 شارع النصر" or "5 ش فيصل متفرع من الهرم"
+
         Args:
             None
         Returns:
-            sharee el gomhorya(str)
+            address(str)
         '''
-        
-        return "شارع الجمهورية"
+        building_number = randint(1, 250)
+        prefix = choice(self.street_prefixes)
+        street = choice(self.street_names)
+        descriptor = choice(self.area_descriptors)
+
+        if descriptor:
+            second_street = choice([s for s in self.street_names if s != street])
+            address = f"{building_number} {prefix} {street} {descriptor} {second_street}"
+        else:
+            address = f"{building_number} {prefix} {street}"
+
+        return address
 
     def putArText(self,img,font_size,text,position):
         '''
