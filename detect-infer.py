@@ -40,7 +40,7 @@ def preprocess_image(image: Image):
 
     grey_image = image.convert('L')
     enhancer = ImageEnhance.Contrast(grey_image)
-    enhanced_image = enhancer.au(1.5)
+    enhanced_image = enhancer.enhance(1.5)
 
     return enhanced_image
 
