@@ -3,3 +3,4 @@
 data/synthetic-ids/images/*
 data/synthetic-ids/IDLabels.csv
 .ipynb_checkpoints
+.DS_Store
