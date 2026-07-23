@@ -18,6 +18,13 @@ field_structure = {
     "marital_status": "string, 'single', 'married' or 'widow' (arabic)"
 }
 
+SYSTEM_PROMPT = f'''
+    You are a Vision Language Model tasked with extracted field values from an Egyptian national identity
+    document. You must extract the fields without making any changes to the fields and return them
+    as they are in Arabic script. If there is something you cannot extract, do not attempt to infer it based
+    on other information.
+'''
+
 USER_PROMPT = f'''
     You are given two sides of an Egyptian National ID, front and back.
     Extract all the fields, regardless of the side they are found on, out of the ID 
@@ -37,8 +44,14 @@ def preprocess_image(image: Image):
 def infer(model, tokenizer, sample):
 
     FastVisionModel.for_inference(model)
-
+    preprocessed_front, preprocessed_back = preprocess_image(sample[0]), preprocess_image(sample[1])
     messages = [
+        {
+            "role": "system",
+            "content": [
+                {"type": "text", "text": SYSTEM_PROMPT}
+            ]
+        },
         {
             "role": "user",
             "content": [
@@ -52,7 +65,7 @@ def infer(model, tokenizer, sample):
     input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
     inputs = tokenizer(
-        [sample[0], sample[1]],  
+        [preprocessed_front, preprocessed_back],  
         input_text,
         add_special_tokens=False,
         return_tensors="pt"
@@ -82,4 +95,4 @@ def batch_infer(model, tokenizer, samples):
     return predictions
 
 
-model, tokenzier = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
+model, tokenizer = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
