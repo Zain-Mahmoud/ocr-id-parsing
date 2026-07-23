@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['ID-cards']
+
+roboflow:
+  workspace: nile-university-oions
+  project: id-frame
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/nile-university-oions/id-frame/dataset/1
