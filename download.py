@@ -10,7 +10,6 @@ load_dotenv()
 API_KEY = os.environ['ROBOFLOW_TOKEN']
 
 DATASETS = [
-    # workspace, project, version
     ("idcard-b708e", "card_seg-4mofm", 1),
     ("nile-university-oions", "id-frame", 1),
     ("mo-1q5np", "card_finder-ykuhs", 2),
@@ -18,24 +17,37 @@ DATASETS = [
     ("roboflow-oa8fu", "grad-rvfr6", 2)
 ]
 
-DOWNLOAD_DIR = Path("downloads")
-MERGED_DIR = Path("data/detection-data")
+DOWNLOAD_DIR = Path("./downloads")
+
+try:
+    DOWNLOAD_DIR.mkdir()
+except:
+    shutil.rmtree("./downloads")
+    DOWNLOAD_DIR.mkdir()
+
+MERGED_DIR = Path("./data/detection-data")
+
+try:
+    MERGED_DIR.mkdir()
+except:
+    shutil.rmtree("./data/detection-data")
+    MERGED_DIR.mkdir()
 
 rf = Roboflow(api_key=API_KEY)
 
 downloaded = []
-
+os.chdir("./downloads")
 for workspace, project, version in tqdm(DATASETS):
 
     ds = (
         rf.workspace(workspace)
         .project(project)
         .version(version)
-        .download("yolo26", location=str(DOWNLOAD_DIR))
+        .download("yolo26")
     )
 
     downloaded.append(Path(ds.location))
-
+os.chdir("..")
 
 for split in ["train", "valid", "test"]:
     (MERGED_DIR / split / "images").mkdir(parents=True, exist_ok=True)
