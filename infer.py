@@ -4,15 +4,25 @@ from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
 
 field_structure = {
-    "full_name": "string (arabic)",
+    "first_name": "string (arabic)",
+    "last_name": "string (arabic)",
     "national_id": "string, 14 digits",
     "address": "string (arabic)",
+    "address2": "string (arabic)",
+    "birthdate": "string, formatted date (arabic)",
+    "issue_date": "string, formatted date (arabic)",
+    "expiration_date": "string, formatted date (arabic)",
+    "job_title": "string (arabic)",
+    "gender": "string, 'male' or 'female' (arabic)",
+    "religion": "string, 'muslim' or 'christian' (arabic)",
+    "marital_status": "string, 'single', 'married' or 'widow' (arabic)"
 }
 
 USER_PROMPT = f'''
-    Extract all the fields out of this Egyptian national ID following this format: {field_structure}.
-    Return all fields as they appear and do not make any changes or updates to any of the fields. Return in
-    in json format
+    You are given two sides of an Egyptian National ID, front and back.
+    Extract all the fields, regardless of the side they are found on, out of the ID 
+    following this format: {field_structure}.  The key order does not matter. Return all 
+    fields as they appear and do not make any changes or updates to any of the fields. Return in json format.
 '''
 
 
