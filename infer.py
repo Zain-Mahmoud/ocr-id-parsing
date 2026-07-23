@@ -34,28 +34,39 @@ def preprocess_image(image: Image):
     return enhanced_image
 
 
-def infer(model, tokenizer, sample: Image):
+def infer(model, tokenizer, sample):
+
     FastVisionModel.for_inference(model)
 
     messages = [
         {
-            'role': 'user',
-            'content': [
-                {
-                    'type': 'image'
-                }, 
-                {
-                    'type': 'text',
-                    'text': USER_PROMPT
-                }
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "image"},
+                {"type": "text", "text": USER_PROMPT}
             ]
         }
     ]
-    preprocessed_image = preprocess_image(sample)
-    input_text = tokenizer.apply_chat_templates(messages, add_generation_prompt=True)
-    inputs = tokenizer(preprocessed_image, input_text, add_special_tokens=False, return_tensors='pt').to(model.device)
 
-    inference = model.generate(**inputs, max_new_tokens=128, use_cache=True, temperature=1.5, min_p=0.1)
+    input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+
+    inputs = tokenizer(
+        [sample[0], sample[1]],  
+        input_text,
+        add_special_tokens=False,
+        return_tensors="pt"
+    ).to(model.device)
+
+    output = model.generate(
+        **inputs,
+        max_new_tokens=256,     
+        use_cache=True,
+        do_sample=False,       
+    )
+
+    input_length = inputs["input_ids"].shape[1] # calculate inpute tokens length to skip in output
+    inference = tokenizer.decode(output[0][input_length:], skip_special_tokens=True)
 
     return inference
 
