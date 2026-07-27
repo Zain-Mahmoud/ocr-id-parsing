@@ -1,15 +1,21 @@
-#!/bin/sh
-rm -rf ./data/synthetic-ids/images/*
-mkdir ./data/synthetic-ids/images/augment
-rm -rf ./data/synthetic-ids/IDLabels.csv
+#!/bin/bash
+if test $# -lt 2
+then
+    echo "Usage: ./gen_synthetic.sh [train | val] [num_samples] [num_augments_per_sample]" 2>&1
+    exit 1
+fi
+
+rm -rf ./data/synthetic-ids/${1}/images/*
+mkdir ./data/synthetic-ids/${1}/images/augment
+rm -rf ./data/synthetic-ids/${1}/IDLabels.csv
 
 cd datagen
 
-uv run ./EGID.py $1 no 
-uv run ./EGID.py $1 yes $2
+uv run ./EGID.py $1 $2 no 
+uv run ./EGID.py $1 $2 yes $3
 
 cd ..
 
-cat ./data/synthetic-ids/augment_IDLabels.csv >> ./data/synthetic-ids/IDLabels.csv
-rm -rf ./data/synthetic-ids/augment_IDLabels.csv
-rm -rf ./data/synthetic-ids/images/augment
+cat ./data/synthetic-ids/${1}/augment_IDLabels.csv >> ./data/synthetic-ids/${1}/IDLabels.csv
+rm -rf ./data/synthetic-ids/${1}/augment_IDLabels.csv
+rm -rf ./data/synthetic-ids/${1}/images/augment

@@ -29,17 +29,15 @@ def convert_digits(text, to_eastern=True):
 
 class GenerateID():
 
-    def __init__(self,images_num,augment=False,augment_batches=10) :
+    def __init__(self,images_num,augment=False,augment_batches=10, type_="train") :
         self.images_num=images_num
         self.augment=augment
         self.augment_batches=augment_batches
-
+        self.type_ = type_
         self.loadFiles()
-        if not os.path.exists("./EGID_data/IDs"):
-                os.makedirs("./EGID_data/IDs")
 
         for i in range(images_num):
-            self.generateID(f"../data/synthetic-ids/images/ID{i}.png",f"../data/synthetic-ids/images/IDB{i}.png", f"../data/synthetic-ids/IDLabels.csv", id=i)
+            self.generateID(f"../data/synthetic-ids/{self.type_}/images/ID{i}.png",f"../data/synthetic-ids/{self.type_}/images/IDB{i}.png", f"../data/synthetic-ids/{self.type_}/IDLabels.csv", id=i)
             print('█' * int(i/(images_num-1)*20) + '░' * int(20-(i/(images_num-1) *20)), end="\r")
         print(f"\ngenerated {images_num} ID")
         if self.augment:
@@ -47,9 +45,9 @@ class GenerateID():
 
     def generateID(self,front_output_path,back_output_path, label_path, id):
         if self.augment:
-            front_output_path = f"../data/synthetic-ids/images/augment/ID{id}.png"
-            back_output_path = f"../data/synthetic-ids/images/augment/IDB{id}.png"
-            label_path = '../data/synthetic-ids/augment_IDLabels.csv'
+            front_output_path = f"../data/synthetic-ids/{self.type_}/images/augment/ID{id}.png"
+            back_output_path = f"../data/synthetic-ids/{self.type_}/images/augment/IDB{id}.png"
+            label_path = f'../data/synthetic-ids/{self.type_}/augment_IDLabels.csv'
 
         person=self.generateName()
         first_name=person["first_name"]
@@ -97,8 +95,6 @@ class GenerateID():
 
         national_id_clean = convert_digits(id_number.replace(' ', ''))
 
-        # Fields present on the FRONT of the card only get real values here;
-        # back-only fields are explicitly None so every row has the same columns.
         front_labels = {
             "image": f"ID{id}.png",
             "side": "front",
@@ -445,8 +441,8 @@ class GenerateID():
             ),
         ])
 
-        ids_dir = Path("../data/synthetic-ids/images/augment")
-        out_dir = Path("../data/synthetic-ids/images")
+        ids_dir = Path(f"../data/synthetic-ids/{self.type_}/images/augment")
+        out_dir = Path(f"../data/synthetic-ids/{self.type_}/images")
 
 
         image_extensions = {".png", ".jpg", ".jpeg"}
@@ -482,11 +478,14 @@ class GenerateID():
 
 
 if __name__ == '__main__':
-    size = int(sys.argv[1])
-    augment = sys.argv[2]
+    type_ = sys.argv[1]
+
+    size = int(sys.argv[2])
+    augment = sys.argv[3]
     augment = augment == "yes"
+
     if augment:
-        augment_batch_size = int(sys.argv[3])
-        GenerateID(size, augment_batches=augment_batch_size, augment=augment)
+        augment_batch_size = int(sys.argv[4])
+        GenerateID(size, augment_batches=augment_batch_size, augment=augment, type_=type_)
     else:
-        GenerateID(size)
+        GenerateID(size, type_=type_)
