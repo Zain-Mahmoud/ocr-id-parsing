@@ -8,7 +8,8 @@ ERRORS = {
     -2: "invalid_keys",
     -3: "invalid_national_id_length",
     -4: "invalid_national_id_characters",
-    -5: "invalid_gender"
+    -5: "invalid_gender",
+    -6: "invalid_national_id_checksum"
 }
 
 field_structure = {
@@ -40,11 +41,13 @@ USER_PROMPT = f'''
     fields that you detect as they appear and do not make any changes or updates to any of the fields. Return in json format.
 '''
 
-def convert_digits(text):
+def convert_digits(text, to_eastern=True):
     western = "0123456789"
     eastern = "٠١٢٣٤٥٦٧٨٩"
-
-    table = str.maketrans(western, eastern)
+    if to_eastern:
+        table = str.maketrans(western, eastern)
+    else:
+        table = str.maketrans(eastern, western)
 
     return text.translate(table)
 
@@ -123,6 +126,21 @@ def validate(response):
 
     if len(national_id_english) != 14:
         return -3
+
+    national_id_english = convert_digits(parsed_response['national_id'], to_eastern=False)
+
+    if len(national_id_english) != 14:
+        return -3
+
+    def __validate_checksum(n_id: str) -> bool:
+        w = (2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+        t = sum(int(d) * w[i] for i, d in enumerate(n_id[:13]))
+        k = 11 - t % 11
+        k = 0 if k == 10 else (1 if k == 11 else k)
+        return k == int(n_id[-1])
+
+    if not __validate_checksum(national_id_english):
+        return -6
     
     try:
         int(parsed_response['national_id'])
