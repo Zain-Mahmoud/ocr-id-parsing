@@ -14,14 +14,6 @@ ERRORS = {
     -5: "invalid_gender"
 }
 
-def convert_digits(text):
-    western = "0123456789"
-    eastern = "٠١٢٣٤٥٦٧٨٩"
-
-    table = str.maketrans(western, eastern)
-
-    return text.translate(table)
-
 field_structure = {
     "side": "string 'front' or 'back'",
     "first_name": "string (arabic)",
@@ -51,6 +43,13 @@ USER_PROMPT = f'''
 '''
 
 
+def convert_digits(text):
+    western = "0123456789"
+    eastern = "٠١٢٣٤٥٦٧٨٩"
+
+    table = str.maketrans(western, eastern)
+
+    return text.translate(table)
 
 def preprocess_image(image: Image.Image):
     grey_image = image.convert('L')
