@@ -3,6 +3,14 @@ import json
 from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
 
+ERRORS = {
+    -1: "invalid_json",
+    -2: "invalid_keys",
+    -3: "invalid_national_id_length",
+    -4: "invalid_national_id_characters",
+    -5: "invalid_gender"
+}
+
 field_structure = {
     "side": "string 'front' or 'back'",
     "first_name": "string (arabic)",
@@ -24,6 +32,7 @@ SYSTEM_PROMPT = f'''
     as they are in Arabic script. If there is something you cannot extract, do not attempt to infer it based
     on other information.
 '''
+
 USER_PROMPT = f'''
     You are given one side of an Egyptian National ID, either front or back.
     Extract all the fields that are on this side out of the ID and report which side it was
@@ -31,9 +40,16 @@ USER_PROMPT = f'''
     fields that you detect as they appear and do not make any changes or updates to any of the fields. Return in json format.
 '''
 
+def convert_digits(text):
+    western = "0123456789"
+    eastern = "٠١٢٣٤٥٦٧٨٩"
+
+    table = str.maketrans(western, eastern)
+
+    return text.translate(table)
 
 def preprocess_image(image: Image.Image):
-    
+
     grey_image = image.convert('L')
     enhancer = ImageEnhance.Contrast(grey_image)
     enhanced_image = enhancer.enhance(1.5)
@@ -92,6 +108,36 @@ def batch_infer(model, tokenizer, samples):
 
     return predictions
 
+
+def validate(response):
+
+    try:
+        parsed_response = json.loads(response)
+    except:
+        return -1
+    
+    if set(parsed_response.keys()) != set(field_structure.keys()):
+        return -2
+    
+    national_id_english = convert_digits(parsed_response['national_id'])
+
+    if len(national_id_english) != 14:
+        return -3
+    
+    try:
+        int(parsed_response['national_id'])
+    except:
+        return -4
+
+    if "front" in parsed_response:
+        ...
+    else:
+        if parsed_response['gender'] not in {'ذكر', 'أنثي'}:
+            return -5
+    
+    return 0
+
+    
 
 model, tokenizer = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
 FastVisionModel.for_inference(model)

@@ -6,6 +6,15 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 
+ERRORS = {
+    -1: "invalid_json",
+    -2: "invalid_keys",
+    -3: "invalid_national_id_length",
+    -4: "invalid_national_id_characters",
+    -5: "invalid_gender"
+}
+
+
 field_structure = {
     "side": "string 'front' or 'back'",
     "first_name": "string (arabic)",
@@ -203,6 +212,36 @@ def batch_infer(detection_model, generation_model, tokenizer, samples):
         predictions.append(prediction)
 
     return predictions
+
+
+def validate(response):
+
+    try:
+        parsed_response = json.loads(response)
+    except:
+        return -1
+    
+    if set(parsed_response.keys()) != set(field_structure.keys()):
+        return -2
+    
+    national_id_english = convert_digits(parsed_response['national_id'])
+
+    if len(national_id_english) != 14:
+        return -3
+    
+    try:
+        int(parsed_response['national_id'])
+    except:
+        return -4
+
+    if "front" in parsed_response:
+        ...
+    else:
+        if parsed_response['gender'] not in {'ذكر', 'أنثي'}:
+            return -5
+    
+    return 0
+
 
 
 detection_model = load_yolo()
