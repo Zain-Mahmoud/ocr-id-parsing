@@ -65,8 +65,8 @@ class GenerateID():
 
         first_name_image =self.putArText('./IDBLANK.jpg',25,first_name,(850,420))
         self.putArText(first_name_image,25,paternal_names,(850,460))
-        self.putArText(first_name_image,25,address,(850,520))
-        self.putArText(first_name_image,25,station_line,(850,560))
+        self.putArText(first_name_image,25,address,(850,500))
+        self.putArText(first_name_image,25,station_line,(850,550))
         self.putArNumText(first_name_image,25,birthdate_formatted,(400,630))
         self.putArNumText(first_name_image,25,id_number,(850,650))
 
@@ -95,47 +95,62 @@ class GenerateID():
         back_id.save(back_output_path)
         f = open(label_path, "a", encoding="utf-8", newline='')
 
-        labels = {
-            "image_front": f"ID{id}.png",
-            "image_back": f"IDB{id}.png",
-            "first_name": first_name, 
-            "last_name": paternal_names, 
-            "gender": gender_text, 
-            "birthdate": convert_digits(birthdate_formatted),
-            "national_id": convert_digits(id_number.replace(' ', '')),
-            "issue_date": convert_digits(issue_date),
-            "expiration_date": convert_digits(expiration_date),
+        national_id_clean = convert_digits(id_number.replace(' ', ''))
+
+        # Fields present on the FRONT of the card only get real values here;
+        # back-only fields are explicitly None so every row has the same columns.
+        front_labels = {
+            "image": f"ID{id}.png",
+            "side": "front",
+            "first_name": first_name,
+            "last_name": paternal_names,
+            "gender": None,
+            "national_id": national_id_clean,   # national_id appears on both sides
+            "issue_date": None,
+            "expiration_date": None,
             "address": address,
             "address2": station_line,
+            "job_title": None,
+            "religion": None,
+            "marital_status": None
+        }
+
+        # Fields present on the BACK of the card only get real values here;
+        # front-only fields are explicitly None.
+        back_labels = {
+            "image": f"IDB{id}.png",
+            "side": "back",
+            "first_name": None,
+            "last_name": None,
+            "gender": gender_text,
+            "national_id": national_id_clean,   # national_id appears on both sides
+            "issue_date": convert_digits(issue_date),
+            "expiration_date": convert_digits(expiration_date),
+            "address": None,
+            "address2": None,
             "job_title": job_text,
             "religion": religion,
             "marital_status": marital_status
         }
-        if self.augment:
-            labels_aug = [{
-                "image_front": f"a_ID{id}_{c+1}.png",
-                "image_back": f"a_IDB{id}_{c+1}.png",
-                "first_name": first_name, 
-                "last_name": paternal_names, 
-                "gender": gender_text, 
-                "birthdate": convert_digits(birthdate_formatted),
-                "national_id": convert_digits(id_number.replace(' ', '')),
-                "issue_date": convert_digits(issue_date),
-                "expiration_date": convert_digits(expiration_date),
-                "address": address,
-                "address2": station_line,
-                "job_title": job_text,
-                "religion": religion,
-                "marital_status": marital_status
-            } for c in range(self.augment_batches)]
 
-        writer = csv.DictWriter(f, fieldnames=list(labels.keys()))
+        rows_to_write = [front_labels, back_labels]
+
+        if self.augment:
+            rows_to_write = []
+            for c in range(self.augment_batches):
+                aug_front = dict(front_labels)
+                aug_front["image"] = f"a_ID{id}_{c+1}.png"
+                rows_to_write.append(aug_front)
+
+                aug_back = dict(back_labels)
+                aug_back["image"] = f"a_IDB{id}_{c+1}.png"
+                rows_to_write.append(aug_back)
+
+        writer = csv.DictWriter(f, fieldnames=list(front_labels.keys()))
         if os.stat(label_path).st_size == 0 and not self.augment:
             writer.writeheader()
-        if self.augment:
-            writer.writerows(labels_aug)
-        else:
-            writer.writerow(labels)
+        writer.writerows(rows_to_write)
+        f.close()
 
 
     def generateJobTitle(self, gender):
@@ -320,7 +335,7 @@ class GenerateID():
         Returns:
             address(str)
         '''
-        building_number = randint(1, 250)
+        building_number = convert_digits(str(randint(1, 250)))
         prefix = choice(self.street_prefixes)
         street = choice(self.street_names)
         descriptor = choice(self.area_descriptors)
