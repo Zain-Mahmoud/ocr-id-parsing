@@ -18,7 +18,7 @@ from pathlib import Path
 import albumentations as A
 import cv2
 
-def convert_digits(text, to_eastern=True):
+def convert_digits(text):
     western = "0123456789"
     eastern = "٠١٢٣٤٥٦٧٨٩"
 
