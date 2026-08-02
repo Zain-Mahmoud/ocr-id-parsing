@@ -1,5 +1,4 @@
 from unsloth import FastVisionModel
-import json
 from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
 from ultralytics import YOLO
@@ -36,16 +35,6 @@ USER_PROMPT = f'''
 '''
 
 
-def convert_digits(text, to_eastern=True):
-    western = "0123456789"
-    eastern = "٠١٢٣٤٥٦٧٨٩"
-    if to_eastern:
-        table = str.maketrans(western, eastern)
-    else:
-        table = str.maketrans(eastern, western)
-
-    return text.translate(table)
-
 def preprocess_image(image: Image.Image):
     grey_image = image.convert('L')
     enhancer = ImageEnhance.Contrast(grey_image)
@@ -74,80 +63,77 @@ def order_points(pts):
 
 def orient(segmented_image):
 
-        if segmented_image.masks is None:
-            return None
-    
-        original = segmented_image.orig_img
-    
-        original = cv2.cvtColor(original, cv2.COLOR_BGR2RGB)
-    
-        boxes = segmented_image.boxes
-    
-        best_idx = int(boxes.conf.argmax())
-    
-        mask = segmented_image.masks.data[best_idx]
-    
-        mask = mask.cpu().numpy()
-    
-        mask = cv2.resize(
-            mask,
-            (original.shape[1], original.shape[0]),
-            interpolation=cv2.INTER_NEAREST,
-        )
-    
-        binary = (mask > 0.5).astype(np.uint8) * 255
-    
-        contours, _ = cv2.findContours(
-            binary,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-    
-        contour = max(contours, key=cv2.contourArea)
-    
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(
-            contour,
-            0.02 * perimeter,
-            True,
-        )
-    
-        if len(approx) == 4:
-            pts = approx.reshape(4, 2).astype(np.float32)
-        else:
-            rect = cv2.minAreaRect(contour)
-            pts = cv2.boxPoints(rect)
-    
-        pts = order_points(pts)
-    
-        (top_left, top_right, bottom_right, bottom_left) = pts
-    
-        widthA = np.linalg.norm(bottom_right - bottom_left)
-        widthB = np.linalg.norm(top_right - top_left)
-        maxWidth = int(round(max(widthA, widthB)))
-    
-        heightA = np.linalg.norm(top_right - bottom_right)
-        heightB = np.linalg.norm(top_left - bottom_left)
-        maxHeight = int(round(max(heightA, heightB)))
-    
-        dst = np.array([
-            [0, 0],
-            [maxWidth - 1, 0],
-            [maxWidth - 1, maxHeight - 1],
-            [0, maxHeight - 1]
-        ], dtype=np.float32)
-    
-        M = cv2.getPerspectiveTransform(pts, dst)
-    
-        warped = cv2.warpPerspective(
-            original,
-            M,
-            (maxWidth, maxHeight),
-            flags=cv2.INTER_CUBIC,
-        )
-    
-        final_image = Image.fromarray(warped)
-        return final_image
+    if segmented_image.masks is None:
+        return None
+
+    original = segmented_image.orig_img
+    original = cv2.cvtColor(original, cv2.COLOR_BGR2RGB)
+
+    boxes = segmented_image.boxes
+    best_idx = int(boxes.conf.argmax())
+
+    mask = segmented_image.masks.data[best_idx]
+    mask = mask.cpu().numpy()
+
+    mask = cv2.resize(
+        mask,
+        (original.shape[1], original.shape[0]),
+        interpolation=cv2.INTER_NEAREST,
+    )
+
+    binary = (mask > 0.5).astype(np.uint8) * 255
+
+    contours, _ = cv2.findContours(
+        binary,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    contour = max(contours, key=cv2.contourArea)
+
+    perimeter = cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(
+        contour,
+        0.02 * perimeter,
+        True,
+    )
+
+    if len(approx) == 4:
+        pts = approx.reshape(4, 2).astype(np.float32)
+    else:
+        rect = cv2.minAreaRect(contour)
+        pts = cv2.boxPoints(rect)
+
+    pts = order_points(pts)
+
+    (top_left, top_right, bottom_right, bottom_left) = pts
+
+    widthA = np.linalg.norm(bottom_right - bottom_left)
+    widthB = np.linalg.norm(top_right - top_left)
+    maxWidth = int(round(max(widthA, widthB)))
+
+    heightA = np.linalg.norm(top_right - bottom_right)
+    heightB = np.linalg.norm(top_left - bottom_left)
+    maxHeight = int(round(max(heightA, heightB)))
+
+    dst = np.array([
+        [0, 0],
+        [maxWidth - 1, 0],
+        [maxWidth - 1, maxHeight - 1],
+        [0, maxHeight - 1]
+    ], dtype=np.float32)
+
+    M = cv2.getPerspectiveTransform(pts, dst)
+
+    warped = cv2.warpPerspective(
+        original,
+        M,
+        (maxWidth, maxHeight),
+        flags=cv2.INTER_CUBIC,
+    )
+
+    final_image = Image.fromarray(warped)
+    return final_image
 
 def detect(model: YOLO, image):
 
@@ -198,6 +184,9 @@ def generate(model, tokenizer, image):
 def infer(detection_model: YOLO, generation_model, tokenizer, image):
 
     detected = detect(detection_model, image)
+    if detected is None:
+        raise ValueError("No ID card detected in this image — YOLO segmentation returned no mask.")
+
     preprocessed_image = preprocess_image(detected)
     inference = generate(generation_model, tokenizer, preprocessed_image)
 
