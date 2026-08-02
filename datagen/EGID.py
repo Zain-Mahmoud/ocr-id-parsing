@@ -184,7 +184,7 @@ class GenerateID():
         self.street_prefixes = address_dict['street_prefixes']
         self.area_descriptors = address_dict['area_descriptors']
 
-        self.female_images=glob.glob("./images/female/**")
+        self.female_images=glob.glob("./images/male/**")
         self.male_images=glob.glob("./images/male/**")
 
         self.male_jobs = jobs_dict['male_jobs']
