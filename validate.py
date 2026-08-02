@@ -1,78 +1,108 @@
 import json
+from enum import IntEnum
 
-field_structure = {
-    "side": "string 'front' or 'back'",
-    "first_name": "string (arabic)",
-    "last_name": "string (arabic)",
-    "national_id": "string, 14 digits",
-    "address": "string (arabic)",
-    "address2": "string (arabic)",
-    "issue_date": "string, formatted date (arabic)",
-    "expiration_date": "string, formatted date (arabic)",
-    "job_title": "string (arabic)",
-    "gender": "string, 'male' or 'female' (arabic)",
-    "religion": "string, 'muslim' or 'christian' (arabic)",
-    "marital_status": "string, 'single', 'married' or 'widow' (arabic)"
+COMMON_FIELDS = {"side", "national_id"}
+FRONT_ONLY_FIELDS = {"first_name", "last_name", "address", "address2"}
+BACK_ONLY_FIELDS = {
+    "issue_date", "expiration_date", "job_title",
+    "gender", "religion", "marital_status",
 }
 
-def convert_digits(text, to_eastern=True):
-    western = "0123456789"
-    eastern = "٠١٢٣٤٥٦٧٨٩"
-    if to_eastern:
-        table = str.maketrans(western, eastern)
-    else:
-        table = str.maketrans(eastern, western)
+VALID_GENDER_VALUES = {"ذكر", "أنثى"}
+VALID_GOVERNORATE_CODES = {f"{i:02d}" for i in range(1, 28)} | {"88"} 
 
-    return text.translate(table)
+_ARABIC_TO_WESTERN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+def normalize_digits(text: str) -> str:
+    """Normalize Arabic-Indic numerals to Western digits for validation."""
+    return text.translate(_ARABIC_TO_WESTERN)
+
+class Severity(IntEnum):
+    OK = 0
+    RETRY = 1     
+    REJECT = 2    
 
 ERRORS = {
-    -1: "invalid_json",
-    -2: "invalid_keys",
-    -3: "invalid_national_id_length",
-    -4: "invalid_national_id_characters",
-    -5: "invalid_gender",
-    -6: "invalid_national_id_checksum"
+    0:   ("ok",                               Severity.OK),
+    -1:  ("invalid_json",                     Severity.RETRY),
+    -2:  ("missing_side_key",                 Severity.RETRY),
+    -3:  ("invalid_side_value",               Severity.RETRY),
+    -4:  ("invalid_keys_for_side",            Severity.RETRY),
+    -10: ("invalid_national_id_characters",   Severity.REJECT),
+    -11: ("invalid_national_id_length",       Severity.REJECT),
+    -20: ("invalid_national_id_century",      Severity.REJECT),
+    -21: ("invalid_national_id_month",        Severity.REJECT),
+    -22: ("invalid_national_id_day",          Severity.REJECT),
+    -23: ("invalid_national_id_governorate",  Severity.REJECT),
+    -24: ("invalid_national_id_checksum",     Severity.REJECT),  
+    -30: ("invalid_gender",                   Severity.REJECT),
 }
 
-def validate(response):
+def describe(code):
+    return ERRORS.get(code, ("unknown_error", Severity.REJECT))[0]
 
+def severity_of(code: int) -> Severity:
+    return ERRORS.get(code, (None, Severity.REJECT))[1]
+
+def requires_retry(code):
+    return severity_of(code) == Severity.RETRY
+
+def _validate_national_id(national_id: str) -> int:
+    normalized = normalize_digits(national_id)
+
+    if not normalized.isdigit():
+        return -10
+    if len(normalized) != 14:
+        return -11
+
+    century_digit = normalized[0]
+    mm = normalized[3:5]
+    dd = normalized[5:7]
+    gov_code = normalized[7:9]
+
+    if century_digit not in ("2", "3"):
+        return -20
+    if not (1 <= int(mm) <= 12):
+        return -21
+    if not (1 <= int(dd) <= 31):
+        return -22
+    if gov_code not in VALID_GOVERNORATE_CODES:
+        return -23
+    if not _checksum_valid(normalized):
+        return -24
+
+    return 0
+
+
+def _checksum_valid(n_id: str) -> bool:
+    weights = (2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+    total = sum(int(d) * w for d, w in zip(n_id[:13], weights))
+    check = 11 - (total % 11)
+    check = 0 if check == 10 else (1 if check == 11 else check)
+    return check == int(n_id[-1])
+
+def validate(response: str) -> int:
     try:
-        parsed_response = json.loads(response)
-    except:
+        parsed = json.loads(response)
+    except (json.JSONDecodeError, TypeError):
         return -1
-    
-    if set(parsed_response.keys()) != set(field_structure.keys()):
+
+    if "side" not in parsed:
         return -2
-    
-    national_id_english = convert_digits(parsed_response['national_id'])
 
-    if len(national_id_english) != 14:
+    side = parsed["side"]
+    if side not in ("front", "back"):
         return -3
 
-    national_id_english = convert_digits(parsed_response['national_id'], to_eastern=False)
-
-    if len(national_id_english) != 14:
-        return -3
-
-    def __validate_checksum(n_id: str) -> bool:
-        w = (2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
-        t = sum(int(d) * w[i] for i, d in enumerate(n_id[:13]))
-        k = 11 - t % 11
-        k = 0 if k == 10 else (1 if k == 11 else k)
-        return k == int(n_id[-1])
-
-    if not __validate_checksum(national_id_english):
-        return -6
-    
-    try:
-        int(parsed_response['national_id'])
-    except:
+    expected_keys = COMMON_FIELDS | (FRONT_ONLY_FIELDS if side == "front" else BACK_ONLY_FIELDS)
+    if set(parsed.keys()) != expected_keys:
         return -4
 
-    if "front" in parsed_response:
-        ...
-    else:
-        if parsed_response['gender'] not in {'ذكر', 'أنثي'}:
-            return -5
-    
+    id_code = _validate_national_id(parsed["national_id"])
+    if id_code != 0:
+        return id_code
+
+    if side == "back" and parsed["gender"] not in VALID_GENDER_VALUES:
+        return -30
+
     return 0
