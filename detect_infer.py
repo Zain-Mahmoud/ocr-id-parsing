@@ -6,14 +6,6 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 
-ERRORS = {
-    -1: "invalid_json",
-    -2: "invalid_keys",
-    -3: "invalid_national_id_length",
-    -4: "invalid_national_id_characters",
-    -5: "invalid_gender",
-    -6: "invalid_national_id_checksum"
-}
 
 field_structure = {
     "side": "string 'front' or 'back'",
@@ -221,47 +213,6 @@ def batch_infer(detection_model, generation_model, tokenizer, samples):
         predictions.append(prediction)
 
     return predictions
-
-
-def validate(response):
-
-    try:
-        parsed_response = json.loads(response)
-    except:
-        return -1
-    
-    if set(parsed_response.keys()) != set(field_structure.keys()):
-        return -2
-    
-    national_id_english = convert_digits(parsed_response['national_id'], to_eastern=False)
-
-    if len(national_id_english) != 14:
-        return -3
-
-    def __validate_checksum(n_id: str) -> bool:
-        w = (2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
-        t = sum(int(d) * w[i] for i, d in enumerate(n_id[:13]))
-        k = 11 - t % 11
-        k = 0 if k == 10 else (1 if k == 11 else k)
-        return k == int(n_id[-1])
-
-    if not __validate_checksum(national_id_english):
-        return -6
-    
-    try:
-        int(parsed_response['national_id'])
-    except:
-        return -4
-
-    if "front" in parsed_response:
-        ...
-    else:
-        if parsed_response['gender'] not in {'ذكر', 'أنثي'}:
-            return -5
-    
-    return 0
-
-
 
 detection_model = load_yolo()
 generation_model, tokenizer = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
