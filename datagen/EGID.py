@@ -27,6 +27,22 @@ def convert_digits(text):
         
     return text.translate(table)
 
+
+# Same western->eastern mapping used inside putArNumText for rendering.
+# Reused here so ground-truth text for numeral fields is guaranteed to
+# match the pixels actually drawn on the card (punctuation like '/' and
+# spaces pass through unchanged).
+_WESTERN_TO_EASTERN_MAP = {
+    '0': '٠', '1': '١', '2': '٢', '3': '٣', '4': '٤',
+    '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩',
+    " ": " ",
+}
+
+
+def to_eastern_numerals(text):
+    return ''.join(_WESTERN_TO_EASTERN_MAP.get(char, char) for char in text)
+
+
 class GenerateID():
 
     def __init__(self,images_num,augment=False,augment_batches=10, type_="train") :
@@ -61,12 +77,12 @@ class GenerateID():
         governorate, station_line = self.generateGovStation()
         address = self.generateAddress()
 
-        first_name_image =self.putArText('./IDBLANK.jpg',25,first_name,(850,420))
-        self.putArText(first_name_image,25,paternal_names,(850,460))
-        self.putArText(first_name_image,25,address,(850,500))
-        self.putArText(first_name_image,25,station_line,(850,550))
-        self.putArNumText(first_name_image,25,birthdate_formatted,(400,630))
-        self.putArNumText(first_name_image,25,id_number,(850,650))
+        first_name_image, first_name_bbox = self.putArText('./IDBLANK.jpg',25,first_name,(850,420))
+        first_name_image, last_name_bbox  = self.putArText(first_name_image,25,paternal_names,(850,460))
+        first_name_image, address_bbox    = self.putArText(first_name_image,25,address,(850,500))
+        first_name_image, address2_bbox   = self.putArText(first_name_image,25,station_line,(850,550))
+        first_name_image, _birthdate_bbox = self.putArNumText(first_name_image,25,birthdate_formatted,(400,630))
+        first_name_image, national_id_front_bbox = self.putArNumText(first_name_image,25,id_number,(850,650))
 
         first_name_image.paste(self.generateImage(gender), (240,365))
         first_name_image.save(front_output_path)
@@ -75,22 +91,41 @@ class GenerateID():
         issue_date=self.generateIssueDate()
         expiration_date = self.generateExpirationDate(issue_date)
 
-        back_id=self.putArNumText('./IDBACKBLANK.jpg',25,id_number,(750,345))
-        self.putArNumText(back_id,25,issue_date,(480,345))
+        back_id, national_id_back_bbox = self.putArNumText('./IDBACKBLANK.jpg',25,id_number,(750,345))
+        back_id, issue_date_bbox       = self.putArNumText(back_id,25,issue_date,(480,345))
         exp_text="البطاقة سارية حتى"
         job_text = self.generateJobTitle(gender)
-        self.putArText(back_id,22,exp_text,(760,510))
-        self.putArNumText(back_id,25,expiration_date,(570,520))
-        self.putArText(back_id,22,job_text,(750,370))
+        back_id, _exp_label_bbox        = self.putArText(back_id,22,exp_text,(760,510))
+        back_id, expiration_date_bbox   = self.putArNumText(back_id,25,expiration_date,(570,520))
+        back_id, job_title_bbox         = self.putArText(back_id,22,job_text,(750,370))
         if gender==1:
             gender_text="ذكر"
         else:
             gender_text="أنثى"
-        self.putArText(back_id,22,gender_text,(750,435))   
-        self.putArText(back_id, 22, religion, (650, 435))
-        self.putArText(back_id, 22, marital_status, (500, 435))
+        back_id, gender_bbox         = self.putArText(back_id,22,gender_text,(750,435))
+        back_id, religion_bbox       = self.putArText(back_id, 22, religion, (650, 435))
+        back_id, marital_status_bbox = self.putArText(back_id, 22, marital_status, (500, 435))
 
         back_id.save(back_output_path)
+
+        national_id_eastern = to_eastern_numerals(id_number)
+        issue_date_eastern = to_eastern_numerals(issue_date)
+        expiration_date_eastern = to_eastern_numerals(expiration_date)
+
+        self._save_ground_truth(first_name_image, first_name_bbox, first_name, "first_name", id, "front")
+        self._save_ground_truth(first_name_image, last_name_bbox, paternal_names.strip(), "last_name", id, "front")
+        self._save_ground_truth(first_name_image, address_bbox, address, "address", id, "front")
+        self._save_ground_truth(first_name_image, address2_bbox, station_line, "address2", id, "front")
+        self._save_ground_truth(first_name_image, national_id_front_bbox, national_id_eastern, "national_id", id, "front")
+
+        self._save_ground_truth(back_id, national_id_back_bbox, national_id_eastern, "national_id", id, "back")
+        self._save_ground_truth(back_id, issue_date_bbox, issue_date_eastern, "issue_date", id, "back")
+        self._save_ground_truth(back_id, expiration_date_bbox, expiration_date_eastern, "expiration_date", id, "back")
+        self._save_ground_truth(back_id, job_title_bbox, job_text, "job_title", id, "back")
+        self._save_ground_truth(back_id, gender_bbox, gender_text, "gender", id, "back")
+        self._save_ground_truth(back_id, religion_bbox, religion, "religion", id, "back")
+        self._save_ground_truth(back_id, marital_status_bbox, marital_status, "marital_status", id, "back")
+
         f = open(label_path, "a", encoding="utf-8", newline='')
 
         national_id_clean = convert_digits(id_number.replace(' ', ''))
@@ -148,6 +183,47 @@ class GenerateID():
         writer.writerows(rows_to_write)
         f.close()
 
+    def _save_ground_truth(self, image, bbox, text, field_name, id, side, padding=4):
+        '''
+        Crops the region given by bbox (as returned by putArText/putArNumText)
+        out of `image`, with a small padding margin, and writes it alongside
+        a matching Tesseract-format .gt.txt ground truth file.
+
+        Output layout matches what `tesstrain` expects:
+            <MODEL_NAME>-ground-truth/
+                front_first_name_0.png
+                front_first_name_0.gt.txt
+                ...
+
+        Args:
+            image: PIL image the field was drawn onto (front or back card)
+            bbox: (left, top, right, bottom) from putArText/putArNumText
+            text: ground-truth string, logical reading order
+            field_name(str): e.g. "first_name", "national_id"
+            id(int): the numeric ID of this generated card
+            side(str): "front" or "back"
+            padding(int): pixels of margin added around the tight bbox
+        Returns:
+            None
+        '''
+        left, top, right, bottom = bbox
+        img_w, img_h = image.size
+
+        left = max(0, int(left) - padding)
+        top = max(0, int(top) - padding)
+        right = min(img_w, int(right) + padding)
+        bottom = min(img_h, int(bottom) + padding)
+
+        crop = image.crop((left, top, right, bottom))
+
+        gt_dir = Path(f"../data/ocr-id-ground-truth/")
+        gt_dir.mkdir(parents=True, exist_ok=True)
+
+        basename = f"{side}_{field_name}_{id}"
+        crop.save(gt_dir / f"{basename}.png")
+
+        with open(gt_dir / f"{basename}.gt.txt", "w", encoding="utf-8") as gt_file:
+            gt_file.write(text + "\n")
 
     def generateJobTitle(self, gender):
         if gender == 1:
@@ -155,7 +231,7 @@ class GenerateID():
         return choice(self.female_jobs)
 
     def loadFiles(self):
-        #loading files: names, governorates, police stations, addresses, and image paths
+
         with open('names.yaml', 'r', encoding='utf-8') as file:
             names_dict = yaml.safe_load(file)
 
@@ -172,12 +248,10 @@ class GenerateID():
             gov_dict = yaml.safe_load(file)
         self.gov_names = gov_dict['egyptian_governorates']
 
-        # NEW: police stations per governorate
         with open('police_stations.yaml', 'r', encoding='utf-8') as file:
             station_dict = yaml.safe_load(file)
         self.police_stations = station_dict.get('police_stations', {})
 
-        # NEW: address components
         with open('addresses.yaml', 'r', encoding='utf-8') as file:
             address_dict = yaml.safe_load(file)
         self.street_names = address_dict['street_names']
@@ -353,7 +427,8 @@ class GenerateID():
             text(str)
             position(tuple or list)
         Returns
-            pil image
+            tuple: (pil image, bbox) where bbox = (left, top, right, bottom)
+                   of the text actually drawn, in this image's pixel space.
         '''
         if type(img)==str:
             self.image = Image.open(img)
@@ -365,9 +440,12 @@ class GenerateID():
         # start drawing on image
         draw = ImageDraw.Draw(self.image)
         text_length = draw.textlength(bidi_text, font=font)
-        draw.text((position[0]-text_length, position[1]), bidi_text, (0, 0, 0), font=font)
-        
-        return self.image
+        draw_x = position[0] - text_length
+        draw_y = position[1]
+        draw.text((draw_x, draw_y), bidi_text, (0, 0, 0), font=font)
+        bbox = draw.textbbox((draw_x, draw_y), bidi_text, font=font)
+
+        return self.image, bbox
         
 
 
@@ -380,7 +458,8 @@ class GenerateID():
             text(str)
             position(tuple or list)
         Returns
-            image
+            tuple: (pil image, bbox) where bbox = (left, top, right, bottom)
+                   of the text actually drawn, in this image's pixel space.
         '''
         if type(img)==str:
             self.image = Image.open(img)
@@ -388,27 +467,17 @@ class GenerateID():
             self.image=img
         font = ImageFont.truetype("/Users/zain/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
 
-        western_to_eastern_ar_numerals = {
-            '0': '٠',
-            '1': '١',
-            '2': '٢',
-            '3': '٣',
-            '4': '٤',
-            '5': '٥',
-            '6': '٦',
-            '7': '٧',
-            '8': '٨',
-            '9': '٩',
-            " ": " "
-        }
-        eastern_arabic = ''.join([western_to_eastern_ar_numerals.get(char, char) for char in text])
-        
+        eastern_arabic = to_eastern_numerals(text)
+
         # start drawing on image
         draw = ImageDraw.Draw(self.image)
         text_length = draw.textlength(eastern_arabic, font=font)
-        draw.text((position[0]-text_length, position[1]), eastern_arabic, (0, 0, 0), font=font)
-        
-        return self.image
+        draw_x = position[0] - text_length
+        draw_y = position[1]
+        draw.text((draw_x, draw_y), eastern_arabic, (0, 0, 0), font=font)
+        bbox = draw.textbbox((draw_x, draw_y), eastern_arabic, font=font)
+
+        return self.image, bbox
 
     def generateIssueDate(self):
         year=randint(2016,2023)
