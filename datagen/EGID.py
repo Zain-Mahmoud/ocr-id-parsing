@@ -24,7 +24,6 @@ def convert_digits(text):
 
     table = str.maketrans(western, eastern)
 
-        
     return text.translate(table)
 
 
