@@ -1,5 +1,9 @@
 # ID Extraction Pipeline — Plan Comparison
 
+## Project outline
+
+We are building a OCR vision detection model to extract field information from Egyptian National IDs to be used for eKYC at the Egyptian Stock Exchange, so we are looking for close to SOTA performance. 
+
 ## Quick comparison
 
 | | Plan A | Plan B | Plan C |
@@ -45,6 +49,14 @@
 
 | Pros | Cons |
 |---|---|
-| Lowest GPU consumption | Least accurate|
+| Lowest GPU consumption | Least accurate and most moving parts|
 
 ---
+
+### Data
+For `yolo` training: we have ~6500 roboflow samples ready for training using the `ultralytics` api for segmentation (`yolo26n-seg`) and we also have access to more Egyptian national IDs that have field bounding box mappings through Roboflow. 
+
+For VLM training (and OCR fine-tuning if needed): we have access to about 5000 labelled samples with field transcriptions. We also have a synthetic data generation script that generates fake IDs following the same structure as Egyptian cards, with a good level of randomization (names, religions, gender, jobs, etc). It can also augment the images by applying rotations, grey-scale images, etc. This script also produces line text images for the OCR models (can also be modified to generate augmented line images).
+
+---
+
