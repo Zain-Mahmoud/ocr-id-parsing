@@ -1,3 +1,7 @@
+"""
+Validation module to perform structural checks on the output of inference models.
+"""
+
 import json
 from enum import IntEnum
 

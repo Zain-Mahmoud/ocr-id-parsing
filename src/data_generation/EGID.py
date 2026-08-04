@@ -37,7 +37,7 @@ class GenerateID():
         self.loadFiles()
 
         for i in range(images_num):
-            self.generateID(f"../data/synthetic-ids/{self.type_}/images/ID{i}.png",f"../data/synthetic-ids/{self.type_}/images/IDB{i}.png", f"../data/synthetic-ids/{self.type_}/IDLabels.csv", id=i)
+            self.generateID(f"../../data/synthetic-ids/{self.type_}/images/ID{i}.png",f"../../data/synthetic-ids/{self.type_}/images/IDB{i}.png", f"../../data/synthetic-ids/{self.type_}/IDLabels.csv", id=i)
             print('█' * int(i/(images_num-1)*20) + '░' * int(20-(i/(images_num-1) *20)), end="\r")
         print(f"\ngenerated {images_num} ID")
         if self.augment:
@@ -45,9 +45,9 @@ class GenerateID():
 
     def generateID(self,front_output_path,back_output_path, label_path, id):
         if self.augment:
-            front_output_path = f"../data/synthetic-ids/{self.type_}/images/augment/ID{id}.png"
-            back_output_path = f"../data/synthetic-ids/{self.type_}/images/augment/IDB{id}.png"
-            label_path = f'../data/synthetic-ids/{self.type_}/augment_IDLabels.csv'
+            front_output_path = f"../../data/synthetic-ids/{self.type_}/images/augment/ID{id}.png"
+            back_output_path = f"../../data/synthetic-ids/{self.type_}/images/augment/IDB{id}.png"
+            label_path = f'../../data/synthetic-ids/{self.type_}/augment_IDLabels.csv'
 
         person=self.generateName()
         first_name=person["first_name"]
@@ -441,8 +441,8 @@ class GenerateID():
             ),
         ])
 
-        ids_dir = Path(f"../data/synthetic-ids/{self.type_}/images/augment")
-        out_dir = Path(f"../data/synthetic-ids/{self.type_}/images")
+        ids_dir = Path(f"../../data/synthetic-ids/{self.type_}/images/augment")
+        out_dir = Path(f"../../data/synthetic-ids/{self.type_}/images")
 
 
         image_extensions = {".png", ".jpg", ".jpeg"}

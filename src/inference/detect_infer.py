@@ -1,3 +1,9 @@
+"""
+Inference pipeline combining YOLO26 segmentation, OpenCV orientations
+and Qwen3-2b-VL inference
+"""
+
+
 from unsloth import FastVisionModel
 from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm

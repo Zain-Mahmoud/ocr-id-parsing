@@ -1,3 +1,7 @@
+"""
+Inference pipeline only using Qwen3-2b-VL for inference
+"""
+
 from unsloth import FastVisionModel
 from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
