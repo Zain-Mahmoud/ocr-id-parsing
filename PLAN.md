@@ -1,77 +1,50 @@
-### Dependencies
-- `onnxruntime` for training output and loading during inference
-- `opencv-python` for image preprocessing
-- `ultralytics` for detecting card and orienting
-- `easyocr` or `paddleocr` for field detection and recognition
+# ID Extraction Pipeline — Plan Comparison
 
-### Post-training and validation
-#### Steps
-- Train and validate a yolo26n or yolo26s model (can tune as a hyperparameter) on training images to detect ID card location in image and draw bounding boxes. Use the train and vaildation options through the `yolo` api. optimize for best mAP50-95 (mean average precision at Intersection over Union threshold between 50-95 ) score.
-- Use default MuSGD optimizer which is a hybrid between SGD updates and Muon-style updates
-- Perform grid search to optimize the following hyperparameters (recommended by official ultralytics docs):
-    - `imgsize`: size that all images get cropped to 
-    - `lr0`: learning rate for optimizer
-    - `batch`: batch size
-    - `weight_decay`: L2 regularization term, penalizes larger weights to prevent overfitting
-    - `epochs`: number of epochs (complete pass over the full dataset) to train data for
+## Quick comparison
 
-- Export best model to a `.onnx` file (instead of `.pt`) for inference stage 
+| | Plan A | Plan B | Plan C |
+|---|---|---|---|
+| **Approach** | End-to-end VLM | yolo26 Detection + VLM | yolo26 Detection + OCR |
+| **Accuracy** | Lower | Highest | Lowest |
+| **GPU usage** | Medium | High | Lowest |
+| **Complexity** | Simplest | Moderate | Most moving parts |
 
-- Validation using grid-search is often expensive and might not be necessary since we aren't training a model from scratch. Also, leaving out a held-out validation set reduce the training dataset (can be avoided by using cross-validation grid search cv). Depending on the training infrastructure and training dataset size, it might be wise to skip this step and use default hyperparameter values specified by ultralytics.
+---
 
-- Note: training/validation data argument is a path to a `.yaml` config file that specifies lots of configurations and values including the path to the training and validation data
+## Plan A — One-Shot VLM
 
-#### Sample code
-##### Without grid-search validation
-```python
-from ultralytics import YOLO
+**Pipeline:** Fine-tuned VLM handles detection and extraction end-to-end, in a single pass.
 
-model = YOLO('yolo26n.pt') # load pre-trained model
+**Models:** Fine-tuned `Qwen3-VL-2B`
 
-results = model.train('/path/to/training/data') # train model with training data using default hyperparameter values
+| Pros | Cons |
+|---|---|
+| Simplest pipeline — one model, one step | Prone to hallucination / inaccuracy |
+| Medium GPU consumption | Requires clean, precise input images to work reliably |
 
-results.export('onnx') # export to onnx runtime file format
-```
+---
 
-##### With grid-search validation
-```python
-from ultralytics import YOLO
+## Plan B — Detection + VLM
 
-grid = ... # define hyperparameters here
+**Pipeline:** YOLO segmentation (bounding boxes) → OpenCV orientation/resizing → VLM extraction
 
-# initialize best score and model
-best_map_score = -1 
-best_model = None
+**Models:** Post-trained `YOLO26` (Roboflow dataset) + fine-tuned `Qwen3-VL-2B`
 
-for value in grid:
-    model = YOLO('yolo26n.pt') # load pre-trained model
+| Pros | Cons |
+|---|---|
+| Most accurate of the three | GPU-intensive, especially at inference |
+| Can handle imperfect input framing (YOLO + OpenCV normalize it first) | Possibly overkill depending on real-world image quality |
 
-    results = model.train('/path/to/training/data') # train model with training data using default hyperparameter values
+---
 
-    metrics = results.val('/path/to/validation/data').map # get validation metrics on validation data
-    curr_map = metrics.map
-    ... # other validation metrics here
+## Plan C — Detection + OCR
 
-    if curr_map_score > best_map_score:
-        #update best score and model
-        best_map_score = curr_map_score
-        best_model = results
+**Pipeline:** YOLO segmentation (bounding boxes + field locations) → OpenCV → OCR line extraction
 
-best_model.export('onnx') # export best model to onnx runtime file format
-```
+**Models:** Post-trained `YOLO26` for segmentation, `YOLO26` for field detection (localization only, not extraction), fine-tuned Tesseract Arabic model (`ara.traineddata` base or custom `ioy_mi_400_nn_fn_nns.traineddata`) or `arabic_PP-OCRv5_mobile_rec`
 
-#### TODOs and questions
-- Look into configuration files
-- Ask about GPU access and budget
-- Ask about final platform for usecase
-- Consult LLMs
+| Pros | Cons |
+|---|---|
+| Lowest GPU consumption | Least accurate|
 
-
-### VLM training
-- Use `PaddleOCR-VL-1.6` (latest VLM from paddleOCR)
-- Perform fine tuning using our labelled data.
-
-### OCR & fixed-rule extraction
-- Use standard OCR to extract fields and positions. `PaddleOCRv6`, `EasyOCR`, `RapidOCR` etc
-- Analyse extracted fields using fixed rules (coordinates, regular expressions, etc.)
-
+---
