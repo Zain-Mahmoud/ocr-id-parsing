@@ -1,0 +1,25 @@
+image,side,field_name,text
+front_first_name_0.png,front,first_name,مصطفى
+front_last_name_0.png,front,last_name,مراد معتز عبدالكريم أسامة
+front_address_0.png,front,address,٢١٣ شارع الحرية
+front_address2_0.png,front,address2,قسم أسوان - أسوان
+front_national_id_0.png,front,national_id,٢ ٧٧ ٠٧ ١٣ ٨٠٥٧٤٣١
+back_national_id_0.png,back,national_id,٢ ٧٧ ٠٧ ١٣ ٨٠٥٧٤٣١
+back_issue_date_0.png,back,issue_date,٢٠١٨/٠٧
+back_expiration_date_0.png,back,expiration_date,٢٠٢٥/٠٦/٣١
+back_job_title_0.png,back,job_title,مهندس
+back_gender_0.png,back,gender,ذكر
+back_religion_0.png,back,religion,مسلم
+back_marital_status_0.png,back,marital_status,متزوج
+front_first_name_1.png,front,first_name,طلال
+front_last_name_1.png,front,last_name,أيهم مؤيد عصام عبدالرحمن
+front_address_1.png,front,address,١٠٢ شارع الحرية
+front_address2_1.png,front,address2,قسم رأس البر - دمياط
+front_national_id_1.png,front,national_id,٢ ٦٦ ٠١ ١٣ ١٧٢٩١٩٥
+back_national_id_1.png,back,national_id,٢ ٦٦ ٠١ ١٣ ١٧٢٩١٩٥
+back_issue_date_1.png,back,issue_date,٢٠٢٣/٠١
+back_expiration_date_1.png,back,expiration_date,٢٠٣٠/٠١/٣١
+back_job_title_1.png,back,job_title,محاسب
+back_gender_1.png,back,gender,ذكر
+back_religion_1.png,back,religion,مسلم
+back_marital_status_1.png,back,marital_status,اعزب
