@@ -2,29 +2,36 @@
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
-  echo "Usage: $0 [train|val] [num_samples] [num_augments_per_sample]" >&2
-  exit 1
+    echo "Usage: $0 [train|val] [num_samples] [num_augments_per_sample] [card_type]" >&2
+    exit 1
 fi
 
 SPLIT="$1"
 SIZE="$2"
 AUGMENT_BATCHES="${3:-10}"
+CARD_TYPE="${4:-full}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_GENERATION_ROOT="${DATA_GENERATION_ROOT:-$SCRIPT_DIR/../../data_generation}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SIBLING_DATAGENERATION="${REPO_ROOT}/../data_generation"
 
-if [ ! -f "$DATA_GENERATION_ROOT/EGID.py" ]; then
-  if [ -f "$SCRIPT_DIR/src/data_generation/EGID.py" ]; then
-    DATA_GENERATION_ROOT="$SCRIPT_DIR/src/data_generation"
-  else
-    echo "Could not find data_generation/EGID.py in $DATA_GENERATION_ROOT or $SCRIPT_DIR/src/data_generation" >&2
+if [ -n "${DATA_GENERATION_ROOT:-}" ] && [ -d "$DATA_GENERATION_ROOT" ]; then
+    GENERATOR_ROOT="$DATA_GENERATION_ROOT"
+elif [ -d "$SIBLING_DATAGENERATION" ]; then
+    GENERATOR_ROOT="$SIBLING_DATAGENERATION"
+else
+    echo "Unable to find data_generation root. Set DATA_GENERATION_ROOT to the external repo or add a local datagen/ directory." >&2
     exit 1
-  fi
 fi
 
-PYTHON_EXEC="$DATA_GENERATION_ROOT/.venv/bin/python"
-
+PYTHON_EXEC="${GENERATOR_ROOT}/.venv/bin/python"
 if [ ! -x "$PYTHON_EXEC" ]; then
-  PYTHON_EXEC="$(command -v python3 || command -v python)"
+    PYTHON_EXEC="$(command -v python3 || command -v python)"
 fi
 
-"$PYTHON_EXEC" "$DATA_GENERATION_ROOT/EGID.py" "$SPLIT" "$SIZE" --mode both --augment-batches "$AUGMENT_BATCHES" --out-root "$SCRIPT_DIR/../data/synthetic-ids" --resources-dir "$DATA_GENERATION_ROOT"
+export NO_ALBUMENTATIONS_UPDATE=1
+OUT_ROOT="${REPO_ROOT}/data/synthetic-ids"
+
+mkdir -p "$OUT_ROOT/$SPLIT/images"
+
+"$PYTHON_EXEC" "$GENERATOR_ROOT/EGID.py" "$SPLIT" "$SIZE" --mode both --augment-batches "$AUGMENT_BATCHES" --card-type "$CARD_TYPE" --out-root "$OUT_ROOT" --resources-dir "$GENERATOR_ROOT"
