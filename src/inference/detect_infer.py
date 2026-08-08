@@ -3,14 +3,14 @@ Inference pipeline combining YOLO26 segmentation, OpenCV orientations
 and Qwen3-2b-VL inference
 """
 
-
 from unsloth import FastVisionModel
 from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
 import numpy as np
 import cv2
-
+import json
 
 field_structure = {
     "side": "string 'front' or 'back'",
@@ -49,9 +49,18 @@ def preprocess_image(image: Image.Image):
     return enhanced_image
 
 def load_yolo():
-
-    model = YOLO("/path/to/trained/model.onnx")
+    model = YOLO("./models/yolo/best.onnx")
     return model
+
+def load_vlm():
+    generation_model, tokenizer = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
+    FastVisionModel.for_inference(generation_model)
+    return generation_model, tokenizer
+
+def load():
+    yolo_model = load_yolo()
+    vlm_model, vlm_tokenizer = load_vlm()
+    return {"yolo": yolo_model, "vlm": (vlm_model, vlm_tokenizer)}
 
 
 def order_points(pts):
@@ -141,15 +150,47 @@ def orient(segmented_image):
     final_image = Image.fromarray(warped)
     return final_image
 
+def get_line_crop(image: Image.Image, box):
+    xc, yc, w, h, r = box
+    center = (float(xc), float(yc))
+
+    M = cv2.getRotationMatrix2D(center=center, angle=r, scale=1.0) 
+    rotated = cv2.warpAffine(image, M, image.size[::-1], flags=cv2.INTER_LINEAR)
+
+    left = min(xc-w / 2, 0)
+    right = max(xc+w / 2, image.width)
+    top = min(yc-h / 2, 0)
+    bottom = max(yc+h / 2, image.height)
+
+    line_crop = rotated[top:bottom, left:right]
+    return line_crop
+
+def extract(result: Results) -> dict:
+    classes = result.names
+
+    obb = result.obb
+    orig_image = result.orig_image
+    extracts = {}
+
+    for i in range(len(obb.data)):
+        curr_class_idx = obb.cls[i].item()
+        curr_class_label = classes[curr_class_idx]
+        curr_conf = obb.conf[i].item()
+        curr_xyhwr = obb.xywhr[i]
+
+        extracts[curr_class_label] = {"conf": curr_conf, "line_crop": get_line_crop(orig_image, curr_xyhwr)}
+
+
 def detect(model: YOLO, image):
 
-    results = model(image)
-    final_image = orient(results[0])
+    results = model(image)[0]
+    extracted_results = extract(results)
 
-    return final_image
+    return 
 
 
-def generate(model, tokenizer, image):
+
+def vlm_inference(model, tokenizer, image):
     messages = [
         {
             "role": "system",
@@ -184,17 +225,22 @@ def generate(model, tokenizer, image):
 
     input_length = inputs["input_ids"].shape[1]
     inference = tokenizer.decode(output[0][input_length:], skip_special_tokens=True)
+    inference = json.loads(inference)
+
     return inference
 
 
 def infer(detection_model: YOLO, generation_model, tokenizer, image):
 
-    detected = detect(detection_model, image)
+    preprocessed_image = preprocess_image(image)
+
+    detected = detect(detection_model, preprocessed_image)
+
     if detected is None:
         raise ValueError("No ID card detected in this image — YOLO segmentation returned no mask.")
 
-    preprocessed_image = preprocess_image(detected)
-    inference = generate(generation_model, tokenizer, preprocessed_image)
+
+    inference = vlm_inference(generation_model, tokenizer, preprocessed_image)
 
     return inference
 
@@ -209,6 +255,9 @@ def batch_infer(detection_model, generation_model, tokenizer, samples):
 
     return predictions
 
-detection_model = load_yolo()
-generation_model, tokenizer = FastVisionModel.from_pretrained("./models/model_name", load_in_4bit=True)
-FastVisionModel.for_inference(generation_model)
+
+
+if __name__ == "__main__":
+    models = load()
+    yolo = models['yolo']
+    vlm_generation, vlm_tokenizer = models['vlm']
