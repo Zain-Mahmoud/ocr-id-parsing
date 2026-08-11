@@ -23,9 +23,9 @@ import validate
 
 logger = logging.getLogger(__name__)
 
-OCR_CONF_THRESHOLD = 0.6
+OCR_CONF_THRESHOLD = 0.7
 MAX_VLM_RETRIES = 2
-
+DETECTION_CONF_THRESHOLD = 0.7
 FIELD_STRUCTURE = {
     "side": "string, 'front' or 'back'",
     "first_name": "string (arabic)",
