@@ -1,6 +1,9 @@
 """
-Validation module to perform structural checks on the output of inference models.
+Validation module to perform structural checks on the output of inference
+models (either the OCR cascade or the VLM fallback).
 """
+
+from __future__ import annotations
 
 import json
 from enum import IntEnum
@@ -13,45 +16,62 @@ BACK_ONLY_FIELDS = {
 }
 
 VALID_GENDER_VALUES = {"ذكر", "أنثى"}
-VALID_GOVERNORATE_CODES = {f"{i:02d}" for i in range(1, 28)} | {"88"} 
+VALID_GOVERNORATE_CODES = {f"{i:02d}" for i in range(1, 28)} | {"88"}
 
 _ARABIC_TO_WESTERN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
 
 def normalize_digits(text: str) -> str:
     """Normalize Arabic-Indic numerals to Western digits for validation."""
     return text.translate(_ARABIC_TO_WESTERN)
 
+
 class Severity(IntEnum):
     OK = 0
-    RETRY = 1     
-    REJECT = 2    
+    RETRY = 1
+    REJECT = 2
+
 
 ERRORS = {
-    0:   ("ok",                               Severity.OK),
-    -1:  ("invalid_json",                     Severity.RETRY),
-    -2:  ("missing_side_key",                 Severity.RETRY),
-    -3:  ("invalid_side_value",               Severity.RETRY),
-    -4:  ("invalid_keys_for_side",            Severity.RETRY),
-    -10: ("invalid_national_id_characters",   Severity.REJECT),
-    -11: ("invalid_national_id_length",       Severity.REJECT),
-    -20: ("invalid_national_id_century",      Severity.REJECT),
-    -21: ("invalid_national_id_month",        Severity.REJECT),
-    -22: ("invalid_national_id_day",          Severity.REJECT),
-    -23: ("invalid_national_id_governorate",  Severity.REJECT),
-    -24: ("invalid_national_id_checksum",     Severity.REJECT),  
-    -30: ("invalid_gender",                   Severity.REJECT),
+    0: ("ok", Severity.OK),
+    -1: ("invalid_json", Severity.RETRY),
+    -2: ("missing_side_key", Severity.RETRY),
+    -3: ("invalid_side_value", Severity.RETRY),
+    -4: ("invalid_keys_for_side", Severity.RETRY),
+    -10: ("invalid_national_id_characters", Severity.REJECT),
+    -11: ("invalid_national_id_length", Severity.REJECT),
+    -20: ("invalid_national_id_century", Severity.REJECT),
+    -21: ("invalid_national_id_month", Severity.REJECT),
+    -22: ("invalid_national_id_day", Severity.REJECT),
+    -23: ("invalid_national_id_governorate", Severity.REJECT),
+    -24: ("invalid_national_id_checksum", Severity.REJECT),
+    -30: ("invalid_gender", Severity.REJECT),
 }
 
-def describe(code):
+
+def describe(code: int) -> str:
     return ERRORS.get(code, ("unknown_error", Severity.REJECT))[0]
+
 
 def severity_of(code: int) -> Severity:
     return ERRORS.get(code, (None, Severity.REJECT))[1]
 
-def requires_retry(code):
+
+def requires_retry(code: int) -> bool:
     return severity_of(code) == Severity.RETRY
 
-def _validate_national_id(national_id: str) -> int:
+
+def expected_keys(side: str) -> set[str]:
+    """The exact key set a valid result dict must have for a given side."""
+    if side not in ("front", "back"):
+        raise ValueError(f"side must be 'front' or 'back', got {side!r}")
+    return COMMON_FIELDS | (FRONT_ONLY_FIELDS if side == "front" else BACK_ONLY_FIELDS)
+
+
+def _validate_national_id(national_id) -> int:
+    if not isinstance(national_id, str):
+        return -10
+
     normalized = normalize_digits(national_id)
 
     if not normalized.isdigit():
@@ -85,10 +105,12 @@ def _checksum_valid(n_id: str) -> bool:
     check = 0 if check == 10 else (1 if check == 11 else check)
     return check == int(n_id[-1])
 
-def validate(response: str) -> int:
-    try:
-        parsed = json.loads(response)
-    except (json.JSONDecodeError, TypeError):
+
+def validate_dict(parsed: dict) -> int:
+    """Same checks as validate(), but on an already-parsed dict — avoids a
+    pointless json.dumps/json.loads round trip when the caller already has
+    the result in memory (e.g. the OCR-cascade path in detect_infer.py)."""
+    if not isinstance(parsed, dict):
         return -1
 
     if "side" not in parsed:
@@ -98,15 +120,22 @@ def validate(response: str) -> int:
     if side not in ("front", "back"):
         return -3
 
-    expected_keys = COMMON_FIELDS | (FRONT_ONLY_FIELDS if side == "front" else BACK_ONLY_FIELDS)
-    if set(parsed.keys()) != expected_keys:
+    if set(parsed.keys()) != expected_keys(side):
         return -4
 
     id_code = _validate_national_id(parsed["national_id"])
     if id_code != 0:
         return id_code
 
-    if side == "back" and parsed["gender"] not in VALID_GENDER_VALUES:
+    if side == "back" and parsed.get("gender") not in VALID_GENDER_VALUES:
         return -30
 
     return 0
+
+
+def validate(response: str) -> int:
+    try:
+        parsed = json.loads(response)
+    except (json.JSONDecodeError, TypeError):
+        return -1
+    return validate_dict(parsed)
