@@ -29,4 +29,5 @@ dependencies = [
     "onnxruntime>=1.27.0",
     "roboflow>=1.4.0",
     "fastapi[standard]>=0.139.2",
+    "paddleocr>=2.10.0",
 ]
