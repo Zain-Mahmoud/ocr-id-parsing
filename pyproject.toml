@@ -33,3 +33,5 @@ dependencies = [
     "python-multipart>=0.0.32",
     "paddlepaddle>=3.3.1",
 ]
+[tool.fastapi]
+entrypoint = "src.inference.main:app"

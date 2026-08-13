@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile
-from inference.infer import predict, load
+from .infer import predict, load
 from PIL import Image
 
 models = load()

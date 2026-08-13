@@ -18,8 +18,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from unsloth import FastVisionModel
 from paddleocr import TextRecognition
-
-from validation.validate import *
+from .validate import *
 
 logger = logging.getLogger(__name__)
 
