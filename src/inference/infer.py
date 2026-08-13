@@ -19,7 +19,7 @@ from ultralytics.engine.results import Results
 from unsloth import FastVisionModel
 from paddleocr import TextRecognition
 
-import validate
+from validation.validate import *
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def load_ocr(path: str) -> TextRecognition:
 
 def load(
     yolo_path: str = "./models/yolo/best.onnx",
-    vlm_path: str = "./models/vlm",
+    vlm_path: str = "./models/qwen3-vlm",
     ocr_path: str = "./models/paddleocr",
 ) -> dict:
     return {
@@ -126,11 +126,9 @@ def get_line_crop(image: np.ndarray, box, padding: float = 0.2) -> np.ndarray | 
 
 def extract(result: Results) -> dict:
     """Turn a YOLO Results object into {class_name: {conf, line_crop}}.
-    If a class appears more than once (shouldn't happen in normal use, but
-    a stray duplicate detection shouldn't silently overwrite a better one),
-    keep the higher-confidence instance. Degenerate crops are dropped —
-    those classes end up simply absent from the returned dict, which the
-    caller treats the same as "not detected" (triggers the VLM fallback)."""
+    If a class appears more than once, keep the higher-confidence instance. 
+    Degenerate crops are dropped."""
+
     classes = result.names
     obb = result.obb
     orig_image = result.orig_img
@@ -171,15 +169,12 @@ def infer_side(detected_classes: set[str]) -> str | None:
 
 
 def find_unsure_classes(detections: dict, side: str | None) -> set[str]:
-    """Classes that need a VLM fallback: either detected but low-confidence,
-    or entirely missing from what should have been detected for this side.
-    A class that was never detected at all is a stronger signal than a
-    class detected with low confidence, but both need the same treatment
-    here — the OCR cascade can't produce a value for either."""
+    """Detects classes that need a VLM fallback: either detected but low-confidence,
+    or entirely missing from what should have been detected for this side."""
     unsure = {cls for cls, data in detections.items() if data["conf"] < DETECTION_CONF_THRESHOLD}
 
     if side is not None:
-        expected = validate.expected_keys(side) - {"side"}  # "side" isn't a YOLO class
+        expected = validate.expected_keys(side) - {"side"}  
         missing = expected - set(detections.keys())
         unsure |= missing
 
@@ -187,9 +182,7 @@ def find_unsure_classes(detections: dict, side: str | None) -> set[str]:
 
 
 def detect(model: YOLO, image) -> tuple[dict, set[str], str | None]:
-    """Runs detection and returns (detections, unsure_classes, side) in one
-    call, so callers don't need a second pass over the results just to
-    figure out what needs a fallback."""
+    """Return the detections, unsure detections and side for the given image"""
     results = model(image, device="cpu")[0]
     detections = extract(results)
     side = infer_side(set(detections.keys()))
@@ -198,8 +191,7 @@ def detect(model: YOLO, image) -> tuple[dict, set[str], str | None]:
 
 
 def ocr_inference(model: TextRecognition, detections: dict) -> dict:
-    """Recognizes text for every detected field crop except id_card, which
-    is a structural/localization class (the card region itself), not text."""
+    """Recognizes text for every detected field crop except"""
     conversions = {}
     for cls, data in detections.items():
         if cls == "id_card":
@@ -219,10 +211,8 @@ def find_unsure_recognitions(recognitions: dict) -> set[str]:
     return {cls for cls, data in recognitions.items() if data["conf"] < OCR_CONF_THRESHOLD}
 
 
-
 def vlm_inference(model, tokenizer, image: Image.Image) -> dict | None:
-    """Runs the VLM and returns a parsed dict, or None if the output wasn't
-    valid JSON (caller treats None the same as a validate.py RETRY code)."""
+    """Performs inference using fine-tuned Qwen3-2b VLM"""
     messages = [
         {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
         {"role": "user", "content": [{"type": "image"}, {"type": "text", "text": USER_PROMPT}]},
@@ -251,11 +241,7 @@ def vlm_inference(model, tokenizer, image: Image.Image) -> dict | None:
 def vlm_fallback_with_retry(model, tokenizer, image: Image.Image) -> tuple[dict | None, int]:
     """Calls the VLM up to MAX_VLM_RETRIES+1 times, re-prompting on RETRY-
     severity validation failures (bad JSON, wrong/missing side key, wrong
-    key set for the side). REJECT-severity failures (a structurally
-    invalid national ID, bad gender value) also get retried, since those
-    are just as likely to be a transcription slip as a genuinely bad
-    document — but we still stop and surface the failure rather than loop
-    forever or silently return data that never validated."""
+    key set for the side)."""
     parsed = None
     code = -1
 
@@ -329,10 +315,3 @@ def batch_infer(detection_model, generation_model, tokenizer, ocr_model, samples
         predictions.append(prediction)
 
     return predictions
-
-
-if __name__ == "__main__":
-    models = load()
-    yolo = models["yolo"]
-    vlm_generation, vlm_tokenizer = models["vlm"]
-    ocr_model = models["ocr"]
