@@ -32,6 +32,7 @@ dependencies = [
     "paddleocr>=3.7.0",
     "python-multipart>=0.0.32",
     "paddlepaddle>=3.3.1",
+    "onnx>=1.22.0",
 ]
 [tool.fastapi]
 entrypoint = "src.inference.main:app"
