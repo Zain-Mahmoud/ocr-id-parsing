@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile
 from .infer import predict, load
-from PIL import Image
+from PIL import Image, ImageOps
+import io 
 
 models = load()
 yolo = models["yolo"]
@@ -11,10 +12,9 @@ app = FastAPI()
 
 @app.post("/predict_image/")
 async def predict_image(file: UploadFile):
-    try:
-        im = Image.open(file.file)
-    except:
-        return {"Error": 404}
+    raw_img = await file.read()
+    im = Image.open(io.BytesIO(raw_img))
+    im = ImageOps.exif_transpose(im)
     response = predict(yolo, vlm_generation, vlm_tokenizer, ocr_model, im)
     return response
 

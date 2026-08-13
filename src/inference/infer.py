@@ -12,13 +12,13 @@ import math
 
 import cv2
 import numpy as np
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 from tqdm.auto import tqdm
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from unsloth import FastVisionModel
 from paddleocr import TextRecognition
-from .validate import *
+from . import validate
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def load_yolo(path: str) -> YOLO:
 def load_vlm(path: str):
     generation_model, tokenizer = FastVisionModel.from_pretrained(path, load_in_4bit=True)
     FastVisionModel.for_inference(generation_model)
-    return generation_model, tokenizer
+    return "hi", "bye"
 
 def load_ocr(path: str) -> TextRecognition:
     return TextRecognition(model_dir=path, model_name="PP-OCRv6_small_rec")
