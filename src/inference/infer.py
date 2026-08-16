@@ -1,7 +1,8 @@
 """
-Inference pipeline combining YOLO26 OBB detection, PaddleOCR recognition,
-OpenCV crop/orientation correction, and a Qwen3-VL-2B fallback, gated by
-confidence thresholds and validated against validate.py's structural checks.
+Inference pipeline combining YOLO26 OBB detection, a dedicated digit
+detector for the national ID number, EasyOCR for other text fields,
+and a Qwen3-VL-2B fallback, gated by confidence thresholds and validated
+against validate.py's structural checks.
 """
 
 from __future__ import annotations
@@ -12,19 +13,29 @@ import math
 
 import cv2
 import numpy as np
-from PIL import Image, ImageEnhance, ImageOps
+from easyocr import Reader
+from PIL import Image, ImageEnhance
 from tqdm.auto import tqdm
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from unsloth import FastVisionModel
-from paddleocr import TextRecognition
-from . import validate
+from arabic_reshaper import reshape
+import bidi
+
+import validate
 
 logger = logging.getLogger(__name__)
 
 OCR_CONF_THRESHOLD = 0.7
-MAX_VLM_RETRIES = 2
 DETECTION_CONF_THRESHOLD = 0.7
+MAX_VLM_RETRIES = 2
+
+DIGIT_FIELD_FORMATS = {
+    "national_id": {"digit_count": 14, "separator_positions": ()},
+    "issue_date": {"digit_count": 6, "separator_positions": (4,)},
+    "expiration_date": {"digit_count": 8, "separator_positions": (4, 6)},
+}
+
 FIELD_STRUCTURE = {
     "side": "string, 'front' or 'back'",
     "first_name": "string (arabic)",
@@ -59,44 +70,62 @@ USER_PROMPT = f"""
     with no surrounding text or markdown fences.
 """
 
+def digit_translate(text: str):
+    arabic = "٠١٢٣٤٥٦٧٨٩"
+    english = "0123456789"
+    transl_map = str.maketrans(english, arabic)
+    return text.translate(transl_map)
+
 def load_yolo(path: str) -> YOLO:
     return YOLO(path, task="obb")
+
+
+def load_digit_model(path: str) -> YOLO:
+    """Plain detect-task model, one class per digit 0-9 — not OBB."""
+    return YOLO(path)
+
+
+def load_ocr_reader() -> Reader:
+    return Reader(["ar"])
 
 def load_vlm(path: str):
     generation_model, tokenizer = FastVisionModel.from_pretrained(path, load_in_4bit=True)
     FastVisionModel.for_inference(generation_model)
-    return "hi", "bye"
+    return generation_model, tokenizer
 
-def load_ocr(path: str) -> TextRecognition:
-    return TextRecognition(model_dir=path, model_name="PP-OCRv6_small_rec")
 
 def load(
     yolo_path: str = "./models/yolo/best.onnx",
     vlm_path: str = "./models/qwen3-vlm",
-    ocr_path: str = "./models/paddleocr",
+    digit_model_path: str = "./models/digit_detector/detect_id.pt",
 ) -> dict:
     return {
         "yolo": load_yolo(yolo_path),
         "vlm": load_vlm(vlm_path),
-        "ocr": load_ocr(ocr_path),
+        "digit_model": load_digit_model(digit_model_path),
+        "ocr_reader": load_ocr_reader(),
     }
 
-
 def preprocess_image(image: Image.Image) -> Image.Image:
-    grey_image = image.convert("L").convert("RGB")
-    enhancer = ImageEnhance.Contrast(grey_image)
-    return enhancer.enhance(1.5)
+    """Desaturates for contrast/lighting robustness, kept 3-channel to
+    match the detector's training distribution (including its own
+    grayscale-augmented samples, which were always 3-channel)."""
+    rgb = np.array(image.convert("RGB"))
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)  # was mislabeled BGR2GRAY
+    gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    pil_image = Image.fromarray(gray_3ch)
+
+    return pil_image
 
 
 def get_line_crop(image: np.ndarray, box, padding: float = 0.2) -> np.ndarray | None:
     """Crop + straighten a single OBB detection out of the full scene image.
-    Returns None for degenerate boxes (e.g. a box that clips entirely
-    outside the image bounds) — callers must check for this."""
+    Returns None for degenerate boxes — callers must check for this."""
     xc, yc, w, h, r = [float(v) for v in box]
     angle_deg = math.degrees(r)
 
     img_h, img_w = image.shape[:2]
-    w_pad, h_pad = w * (1 + padding), h * (1 + padding)
+    w_pad, h_pad = w * (1 + padding), h * (1 + (padding/2))
 
     diag = int(math.ceil(math.hypot(w_pad, h_pad) / 2)) + 2
     patch_left = int(max(xc - diag, 0))
@@ -112,10 +141,10 @@ def get_line_crop(image: np.ndarray, box, padding: float = 0.2) -> np.ndarray | 
     M = cv2.getRotationMatrix2D(center=(patch_cx, patch_cy), angle=angle_deg, scale=1.0)
     rotated = cv2.warpAffine(patch, M, (patch.shape[1], patch.shape[0]), flags=cv2.INTER_CUBIC)
 
-    left = int(max(patch_cx - w_pad / 2, 0))
-    right = int(min(patch_cx + w_pad / 2, rotated.shape[1]))
-    top = int(max(patch_cy - h_pad / 2, 0))
-    bottom = int(min(patch_cy + h_pad / 2, rotated.shape[0]))
+    left = int(max(patch_cx - w_pad / 2 - 10, 0))
+    right = int(min(patch_cx + w_pad / 2 + 10, rotated.shape[1]))
+    top = int(max(patch_cy - h_pad / 2 - 10, 0))
+    bottom = int(min(patch_cy + h_pad / 2 + 10, rotated.shape[0]))
 
     if right <= left or bottom <= top:
         return None
@@ -124,10 +153,7 @@ def get_line_crop(image: np.ndarray, box, padding: float = 0.2) -> np.ndarray | 
 
 
 def extract(result: Results) -> dict:
-    """Turn a YOLO Results object into {class_name: {conf, line_crop}}.
-    If a class appears more than once, keep the higher-confidence instance. 
-    Degenerate crops are dropped."""
-
+    """Turn a YOLO Results object into {class_name: {conf, line_crop}}"""
     classes = result.names
     obb = result.obb
     orig_image = result.orig_img
@@ -142,7 +168,7 @@ def extract(result: Results) -> dict:
         curr_conf = obb.conf[i].item()
         curr_xywhr = obb.xywhr[i]
 
-        line_crop = get_line_crop(orig_image, curr_xywhr)
+        line_crop = get_line_crop(orig_image, curr_xywhr, padding=0.8)
         if line_crop is None:
             logger.warning("degenerate crop for class %r, skipping", curr_class_label)
             continue
@@ -157,9 +183,6 @@ def extract(result: Results) -> dict:
 
 
 def infer_side(detected_classes: set[str]) -> str | None:
-    """Which side of the card we're looking at, based on which field
-    classes actually got detected. Returns None if neither side's fields
-    are present at all (e.g. the whole detection stage failed)."""
     front_hits = len(detected_classes & validate.FRONT_ONLY_FIELDS)
     back_hits = len(detected_classes & validate.BACK_ONLY_FIELDS)
     if front_hits == 0 and back_hits == 0:
@@ -168,12 +191,10 @@ def infer_side(detected_classes: set[str]) -> str | None:
 
 
 def find_unsure_classes(detections: dict, side: str | None) -> set[str]:
-    """Detects classes that need a VLM fallback: either detected but low-confidence,
-    or entirely missing from what should have been detected for this side."""
     unsure = {cls for cls, data in detections.items() if data["conf"] < DETECTION_CONF_THRESHOLD}
 
     if side is not None:
-        expected = validate.expected_keys(side) - {"side"}  
+        expected = validate.expected_keys(side) - {"side"}
         missing = expected - set(detections.keys())
         unsure |= missing
 
@@ -181,27 +202,77 @@ def find_unsure_classes(detections: dict, side: str | None) -> set[str]:
 
 
 def detect(model: YOLO, image) -> tuple[dict, set[str], str | None]:
-    """Return the detections, unsure detections and side for the given image"""
     results = model(image, device="cpu")[0]
     detections = extract(results)
     side = infer_side(set(detections.keys()))
     unsure = find_unsure_classes(detections, side)
     return detections, unsure, side
 
+def read_digits_via_digit_model(
+    digit_model: YOLO,
+    line_crop: np.ndarray,
+    expected_digit_count: int | None = None,
+    separator_positions: tuple[int, ...] = (),
+) -> tuple[str, float]:
+    """Reads any fixed-format digit field by detecting individual digit
+    glyphs and sorting by x-position"""
+    results = digit_model.predict(line_crop, device="cpu")[0]
+    if results.boxes is None or len(results.boxes) == 0:
+        return "", 0.0
+    
+    detected = []
+    for box in results.boxes:
+        cls = str(int(box.cls.item()))
+        cls = digit_translate(cls)
+        conf = box.conf.item()
+        x1 = box.xyxy[0][0].item()
+        detected.append((cls, x1, conf))
 
-def ocr_inference(model: TextRecognition, detections: dict) -> dict:
-    """Recognizes text for every detected field crop except"""
+    detected.sort(key=lambda d: d[1])  # left-to-right by x-position
+    digits = [str(cls) for cls, _, _ in detected]
+    confs = [conf for _, _, conf in detected]
+
+    chars = []
+    for i, digit in enumerate(digits):
+        chars.append(digit)
+        if (i + 1) in separator_positions:
+            chars.append("/")
+    text = "".join(chars)
+
+    if expected_digit_count is not None and len(digits) != expected_digit_count:
+        logger.warning(
+            "digit count mismatch: got %d, expected %d (%r)",
+            len(digits), expected_digit_count, text,
+        )
+        return text, 0.0  # force a fallback rather than trust a malformed count
+
+    conf = min(confs) if confs else 0.0  # weakest digit, not an average
+    return text, conf
+
+
+def ocr_inference(digit_model: YOLO, ocr_reader: Reader, detections: dict) -> dict:
+    """Recognizes text for every detected field crop except id_card."""
     conversions = {}
+
     for cls, data in detections.items():
         if cls == "id_card":
             continue
 
         line_crop = data["line_crop"]
-        prediction = model.predict(line_crop)[0]
-        conversions[cls] = {
-            "text": prediction["rec_text"],
-            "conf": prediction["rec_score"],
-        }
+
+        if cls in DIGIT_FIELD_FORMATS:
+            fmt = DIGIT_FIELD_FORMATS[cls]
+            text, conf = read_digits_via_digit_model(
+                digit_model, line_crop,
+                expected_digit_count=fmt["digit_count"],
+                separator_positions=fmt["separator_positions"],
+            )
+        else:
+            results = ocr_reader.readtext(line_crop, detail=1, paragraph=True)
+            text = bidi.get_display(reshape(" ".join(r[1] for r in results).strip())).strip()
+            conf = 0.8
+
+        conversions[cls] = {"text": text, "conf": conf}
 
     return conversions
 
@@ -211,7 +282,6 @@ def find_unsure_recognitions(recognitions: dict) -> set[str]:
 
 
 def vlm_inference(model, tokenizer, image: Image.Image) -> dict | None:
-    """Performs inference using fine-tuned Qwen3-2b VLM"""
     messages = [
         {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
         {"role": "user", "content": [{"type": "image"}, {"type": "text", "text": USER_PROMPT}]},
@@ -238,9 +308,6 @@ def vlm_inference(model, tokenizer, image: Image.Image) -> dict | None:
 
 
 def vlm_fallback_with_retry(model, tokenizer, image: Image.Image) -> tuple[dict | None, int]:
-    """Calls the VLM up to MAX_VLM_RETRIES+1 times, re-prompting on RETRY-
-    severity validation failures (bad JSON, wrong/missing side key, wrong
-    key set for the side)."""
     parsed = None
     code = -1
 
@@ -256,12 +323,18 @@ def vlm_fallback_with_retry(model, tokenizer, image: Image.Image) -> tuple[dict 
     return parsed, code
 
 
-def predict(detection_model: YOLO, generation_model, tokenizer, ocr_model: TextRecognition, image: Image.Image) -> dict:
+def predict(
+    detection_model: YOLO,
+    generation_model,
+    tokenizer,
+    digit_model: YOLO,
+    ocr_reader: Reader,
+    image: Image.Image,
+) -> dict:
     preprocessed_image = preprocess_image(image)
     np_image = np.array(preprocessed_image)
 
     detections, unsure_detections, side = detect(detection_model, np_image)
-
 
     if "id_card" in unsure_detections or side is None:
         parsed, code = vlm_fallback_with_retry(generation_model, tokenizer, preprocessed_image)
@@ -273,7 +346,7 @@ def predict(detection_model: YOLO, generation_model, tokenizer, ocr_model: TextR
         parsed, code = vlm_fallback_with_retry(generation_model, tokenizer, card_crop)
         return _finalize(parsed, code)
 
-    recognitions = ocr_inference(ocr_model, detections)
+    recognitions = ocr_inference(digit_model, ocr_reader, detections)
     unsure_recognitions = find_unsure_recognitions(recognitions)
 
     if unsure_recognitions:
@@ -289,25 +362,21 @@ def predict(detection_model: YOLO, generation_model, tokenizer, ocr_model: TextR
 
 
 def _finalize(parsed: dict | None, code: int) -> dict:
-    """Wraps a result with its validation outcome. Never returns fabricated
-    or unvalidated field data silently — REJECT/RETRY failures come back
-    clearly flagged as such, for a human-review queue rather than getting
-    treated as a successful extraction."""
     if code == 0:
         return {"status": "ok", "fields": parsed}
     return {
         "status": "failed",
         "reason": validate.describe(code),
         "severity": validate.severity_of(code).name,
-        "fields": parsed,  
+        "fields": parsed,
     }
 
 
-def batch_infer(detection_model, generation_model, tokenizer, ocr_model, samples: list) -> list[dict]:
+def batch_infer(detection_model, generation_model, tokenizer, digit_model, ocr_reader, samples: list) -> list[dict]:
     predictions = []
     for i, sample in enumerate(tqdm(samples)):
         try:
-            prediction = predict(detection_model, generation_model, tokenizer, ocr_model, sample)
+            prediction = predict(detection_model, generation_model, tokenizer, digit_model, ocr_reader, sample)
         except Exception:
             logger.exception("sample %d failed with an unhandled exception", i)
             prediction = {"status": "failed", "reason": "unhandled_exception", "fields": None}
