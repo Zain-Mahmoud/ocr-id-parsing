@@ -398,7 +398,7 @@ class IDExtractionPipeline:
 
 if __name__ == "__main__":
     pipeline = IDExtractionPipeline()
-    for path in glob("/kaggle/input/datasets/zainmahmoud/images-id/*.png"):
+    for path in glob("/kaggle/input/datasets/zainmahmoud/images-id/*.jpg"):
         im = Image.open(path)
         im = ImageOps.exif_transpose(im)
         print(f"path: {pipeline.predict(im)}")
