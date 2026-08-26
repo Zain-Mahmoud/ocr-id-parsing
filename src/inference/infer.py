@@ -22,6 +22,7 @@ from ultralytics.engine.results import Results
 from unsloth import FastVisionModel
 from arabic_reshaper import reshape
 from bidi.algorithm import get_display
+from glob import glob 
 
 import validate
 
@@ -397,7 +398,7 @@ class IDExtractionPipeline:
 
 if __name__ == "__main__":
     pipeline = IDExtractionPipeline()
-    path = input("enter path").strip()
-    im = Image.open(path)
-    im = ImageOps.exif_transpose(im)
-    print(pipeline.predict())
+    for path in glob("/kaggle/input/datasets/zainmahmoud/images-id/*.png"):
+        im = Image.open(path)
+        im = ImageOps.exif_transpose(im)
+        print(f"path: {pipeline.predict(im)}")
