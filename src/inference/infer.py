@@ -278,7 +278,7 @@ class IDExtractionPipeline:
                 continue
 
             line_crop = data["line_crop"]
-            Image.fromarray(line_crop).show()
+
             if cls == "national_id":
                 text, conf = self._read_digits(
                     line_crop,
@@ -401,4 +401,4 @@ if __name__ == "__main__":
     for path in glob("/kaggle/input/datasets/zainmahmoud/images-id/*.jpg"):
         im = Image.open(path)
         im = ImageOps.exif_transpose(im)
-        print(f"path: {pipeline.predict(im)}")
+        print(f"path: {path},  {pipeline.predict(im)}")
