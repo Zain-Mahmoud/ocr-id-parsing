@@ -6,11 +6,6 @@
 ocr-id-parsing/
 │
 ├── models/
-│   ├── paddleocr/
-│   │   ├── inference.json
-│   │   ├── inference.pdiparams
-│   │   └── inference.yml
-│   │
 │   ├── qwen3-vlm/
 │   │   ├── adapter_config.json
 │   │   ├── adapter_model.safetensors
