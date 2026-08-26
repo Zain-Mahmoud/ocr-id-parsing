@@ -97,24 +97,18 @@ class IDExtractionPipeline:
         self,
         yolo_path: str = "./models/yolo/best.onnx",
         vlm_path: str = "./models/qwen3-vlm",
-        digit_model_path: str = "./models/digit_detector/detect_digit.onnx",
         ocr_languages: tuple[str, ...] = ("ar",),
         config: PipelineConfig | None = None,
     ):
         self.config = config if config else PipelineConfig()
 
         self.yolo = self._load_yolo(yolo_path)
-        self.digit_model = self._load_digit_model(digit_model_path)
         self.ocr_reader = self._load_ocr_reader(ocr_languages)
         self.vlm_model, self.vlm_tokenizer = self._load_vlm(vlm_path)
 
     @staticmethod
     def _load_yolo(path: str) -> YOLO:
         return YOLO(path, task="obb")
-
-    @staticmethod
-    def _load_digit_model(path: str) -> YOLO:
-        return YOLO(path, task="detect")
 
     @staticmethod
     def _load_ocr_reader(languages: tuple[str, ...]) -> Reader:
