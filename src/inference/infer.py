@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from easyocr import Reader
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageOps
 from tqdm.auto import tqdm
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
@@ -400,3 +400,10 @@ class IDExtractionPipeline:
             predictions.append(prediction)
 
         return predictions
+
+if __name__ == "__main__":
+    pipeline = IDExtractionPipeline()
+    path = input("enter path").strip()
+    im = Image.open(path)
+    im = ImageOps.exif_transpose(im)
+    print(pipeline.predict())
