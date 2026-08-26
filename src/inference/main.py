@@ -1,13 +1,9 @@
 from fastapi import FastAPI, File, UploadFile
-from infer import predict, load
+from infer import IDExtractionPipeline
 from PIL import Image, ImageOps
 import io 
 
-models = load()
-yolo = models["yolo"]
-vlm_generation, vlm_tokenizer = models["vlm"]
-digit_model = models["digit_model"]
-ocr_reader = models["ocr_reader"]
+pipeline = IDExtractionPipeline()
 
 app = FastAPI()
 
@@ -16,5 +12,5 @@ async def get_info(file: UploadFile):
     raw_img = await file.read()
     im = Image.open(io.BytesIO(raw_img))
     im = ImageOps.exif_transpose(im)
-    response = predict(yolo, vlm_generation, vlm_tokenizer, digit_model, ocr_reader, im)
+    response = pipeline.predict(im)
     return response
